@@ -68,4 +68,61 @@ describe('WhatsAppService', () => {
       },
     ]);
   });
+
+  it('retries transient Meta send failures', async () => {
+    const fetchClient = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              message: '(#2) Service temporarily unavailable',
+              is_transient: true,
+            },
+          }),
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const retryingService = new WhatsAppService({
+      verifyToken: 'local-secret',
+      accessToken: 'meta-token',
+      phoneNumberId: 'phone-id',
+      logger,
+      fetchClient,
+      retryDelayMs: 0,
+    });
+
+    await expect(retryingService.sendReply('15551234567', 'hello')).resolves.toBeUndefined();
+
+    expect(fetchClient).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry permanent Meta send failures', async () => {
+    const fetchClient = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'Authentication Error',
+            is_transient: false,
+          },
+        }),
+        { status: 401 },
+      ),
+    );
+    const retryingService = new WhatsAppService({
+      verifyToken: 'local-secret',
+      accessToken: 'meta-token',
+      phoneNumberId: 'phone-id',
+      logger,
+      fetchClient,
+      retryDelayMs: 0,
+    });
+
+    await expect(retryingService.sendReply('15551234567', 'hello')).rejects.toThrow(
+      'Failed to send WhatsApp reply. Status: 401',
+    );
+
+    expect(fetchClient).toHaveBeenCalledTimes(1);
+  });
 });
