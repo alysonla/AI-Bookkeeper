@@ -8,6 +8,7 @@ export interface IntentProcessorResult {
   result: unknown;
   transactionCount: number;
   transactions: Transaction[];
+  sourceTransactions?: Transaction[];
 }
 
 export class IntentService {
@@ -35,6 +36,14 @@ export class IntentService {
     );
 
     const explicitCategories = sourceText ? extractExplicitCategories(sourceText) : [];
+
+    if (sourceText && isTransactionListQuestion(sourceText)) {
+      const category = findMentionedCategory(sourceText, nonTransferTransactions);
+
+      if (category) {
+        return this.transactionList(nonTransferTransactions, category);
+      }
+    }
 
     if (sourceText && explicitCategories.length > 0 && isCategorySumQuestion(sourceText)) {
       return this.categorySum(nonTransferTransactions, explicitCategories);
@@ -224,6 +233,22 @@ export class IntentService {
       },
       transactionCount: expenseTransactions.length,
       transactions: expenseTransactions,
+      sourceTransactions: transactions,
+    };
+  }
+
+  private transactionList(transactions: Transaction[], category: string): IntentProcessorResult {
+    const matchingTransactions = transactions
+      .filter(
+        (transaction) => transaction.amount < 0 && matchesCategory(transaction.category, category),
+      )
+      .sort((left, right) => right.date.getTime() - left.date.getTime());
+
+    return {
+      result: matchingTransactions,
+      transactionCount: matchingTransactions.length,
+      transactions: matchingTransactions,
+      sourceTransactions: transactions,
     };
   }
 }
@@ -276,4 +301,30 @@ function isCategorySumQuestion(sourceText: string): boolean {
   }
 
   return /\b(?:total|spend|spending|spent|how much)\b/.test(normalizedText);
+}
+
+function isTransactionListQuestion(sourceText: string): boolean {
+  return /\b(?:list|show)\b.*\btransactions?\b|\btransactions?\b.*\b(?:list|show)\b/.test(
+    sourceText.toLowerCase(),
+  );
+}
+
+function findMentionedCategory(
+  sourceText: string,
+  transactions: Transaction[],
+): string | undefined {
+  const normalizedText = normalizeCategory(sourceText);
+  const categories = [...new Set(transactions.map((transaction) => transaction.category))].sort(
+    (left, right) => right.length - left.length,
+  );
+
+  return categories.find((category) => {
+    const normalizedCategory = normalizeCategory(category);
+
+    return new RegExp(`(?:^|\\s)${escapeRegExp(normalizedCategory)}(?:\\s|$)`).test(normalizedText);
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

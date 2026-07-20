@@ -136,7 +136,7 @@ export async function processWebhookPayload(
           result: calculation.result,
           transactionCount: calculation.transactionCount,
           transactions: calculation.transactions,
-          sourceTransactions: calculation.transactions,
+          sourceTransactions: calculation.sourceTransactions ?? calculation.transactions,
         });
         const reply = await dependencies.openAIService.generateResponse({
           question: message.text,

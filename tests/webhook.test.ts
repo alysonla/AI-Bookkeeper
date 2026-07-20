@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { processWebhookPayload } from '../src/api/webhook.js';
 import { CalculatorService } from '../src/services/calculator.js';
 import type { ConversationService } from '../src/services/conversation.js';
-import type { IntentService } from '../src/services/intent.js';
+import { IntentService } from '../src/services/intent.js';
 import type { OpenAIService } from '../src/services/openai.js';
 import { PlanExecutorService } from '../src/services/planExecutor.js';
 import type { SheetsService } from '../src/services/sheets.js';
@@ -713,5 +713,165 @@ describe('processWebhookPayload', () => {
     expect(conversationService.formatBreakdown).not.toHaveBeenCalled();
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
+  });
+
+  it('lists standalone category transactions from Sheets when intent extraction is unknown', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+      intent: 'unknown',
+      dateRange: 'all_time',
+    });
+    const listTransactions = vi.fn<SheetsService['listTransactions']>().mockResolvedValue([
+      {
+        date: new Date(2026, 2, 31),
+        merchant: 'The Home Depot',
+        category: 'Home Maintenance',
+        amount: -30.39,
+        account: 'Delta SkyMiles Gold Card',
+      },
+      {
+        date: new Date(2026, 2, 30),
+        merchant: 'Y.a Home Services',
+        category: 'Home Maintenance',
+        amount: -698.62,
+        account: 'Delta SkyMiles Gold Card',
+      },
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 3, 1),
+        merchant: 'Hardware Store',
+        category: 'Home Maintenance',
+        amount: -25,
+      },
+    ]);
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('Here are the March Home Maintenance transactions.');
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(undefined),
+      saveCalculationContext: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-9',
+          timestamp: '1770000008',
+          text: 'list out each of the home maintenance transactions in March',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: new IntentService(new CalculatorService()),
+        conversationService: conversationService as unknown as ConversationService,
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'list out each of the home maintenance transactions in March',
+      result: [
+        {
+          date: new Date(2026, 2, 31),
+          merchant: 'The Home Depot',
+          category: 'Home Maintenance',
+          amount: -30.39,
+          account: 'Delta SkyMiles Gold Card',
+        },
+        {
+          date: new Date(2026, 2, 30),
+          merchant: 'Y.a Home Services',
+          category: 'Home Maintenance',
+          amount: -698.62,
+          account: 'Delta SkyMiles Gold Card',
+        },
+      ],
+      transactionCount: 2,
+    });
+    expect(conversationService.saveCalculationContext).toHaveBeenCalledWith('15551234567', {
+      question: 'list out each of the home maintenance transactions in March',
+      result: [
+        {
+          date: new Date(2026, 2, 31),
+          merchant: 'The Home Depot',
+          category: 'Home Maintenance',
+          amount: -30.39,
+          account: 'Delta SkyMiles Gold Card',
+        },
+        {
+          date: new Date(2026, 2, 30),
+          merchant: 'Y.a Home Services',
+          category: 'Home Maintenance',
+          amount: -698.62,
+          account: 'Delta SkyMiles Gold Card',
+        },
+      ],
+      transactionCount: 2,
+      transactions: [
+        {
+          date: new Date(2026, 2, 31),
+          merchant: 'The Home Depot',
+          category: 'Home Maintenance',
+          amount: -30.39,
+          account: 'Delta SkyMiles Gold Card',
+        },
+        {
+          date: new Date(2026, 2, 30),
+          merchant: 'Y.a Home Services',
+          category: 'Home Maintenance',
+          amount: -698.62,
+          account: 'Delta SkyMiles Gold Card',
+        },
+      ],
+      sourceTransactions: [
+        {
+          date: new Date(2026, 2, 31),
+          merchant: 'The Home Depot',
+          category: 'Home Maintenance',
+          amount: -30.39,
+          account: 'Delta SkyMiles Gold Card',
+        },
+        {
+          date: new Date(2026, 2, 30),
+          merchant: 'Y.a Home Services',
+          category: 'Home Maintenance',
+          amount: -698.62,
+          account: 'Delta SkyMiles Gold Card',
+        },
+        {
+          date: new Date(2026, 2, 22),
+          merchant: 'Pharmacy',
+          category: 'Health',
+          amount: -40,
+        },
+      ],
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'Here are the March Home Maintenance transactions.',
+    );
   });
 });

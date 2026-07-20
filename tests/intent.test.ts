@@ -147,6 +147,66 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(3);
   });
 
+  it('lists explicitly named category transactions when the model returns unknown', () => {
+    const marchTransactions: Transaction[] = [
+      {
+        date: new Date(2026, 2, 31),
+        merchant: 'The Home Depot',
+        category: 'Home Maintenance',
+        amount: -30.39,
+        account: 'Delta SkyMiles Gold Card',
+      },
+      {
+        date: new Date(2026, 2, 30),
+        merchant: 'Y.a Home Services',
+        category: 'Home Maintenance',
+        amount: -698.62,
+        account: 'Delta SkyMiles Gold Card',
+      },
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 3, 1),
+        merchant: 'Hardware Store',
+        category: 'Home Maintenance',
+        amount: -25,
+      },
+    ];
+
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'all_time',
+      },
+      marchTransactions,
+      new Date('2026-07-19'),
+      'list out each of the home maintenance transactions in March',
+    );
+
+    expect(result.result).toEqual([
+      {
+        date: new Date(2026, 2, 31),
+        merchant: 'The Home Depot',
+        category: 'Home Maintenance',
+        amount: -30.39,
+        account: 'Delta SkyMiles Gold Card',
+      },
+      {
+        date: new Date(2026, 2, 30),
+        merchant: 'Y.a Home Services',
+        category: 'Home Maintenance',
+        amount: -698.62,
+        account: 'Delta SkyMiles Gold Card',
+      },
+    ]);
+    expect(result.transactionCount).toBe(2);
+    expect(result.sourceTransactions).toHaveLength(3);
+  });
+
   it('does not collapse comparison questions into a combined category sum', () => {
     const result = service.processIntent(
       {

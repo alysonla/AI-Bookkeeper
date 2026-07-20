@@ -25,6 +25,7 @@ If the result already contains an average, total, or monthly values, state them 
 If the result contains medianMonthlySpending, state it directly and include the monthly values when useful.
 For category_totals results, list each category with its total and transaction count.
 For category_sum results, state totalSpending, transactionCount, and the includedCategories. If categories are provided, include the category breakdown.
+If the result is an array of transactions, list the transactions with date, merchant, amount, and account when available.
 For biggest expense results, include the category whenever the result object includes one.
 For biggest individual purchase results, list each transaction with date, merchant, category, and amount.
 For month_category results, compare the categories within each month.
