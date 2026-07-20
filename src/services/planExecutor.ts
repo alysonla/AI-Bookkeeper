@@ -97,7 +97,7 @@ export class PlanExecutorService {
     sourceText?: string,
   ): PlanExecutionResult | undefined {
     const sourceTransactions = context.sourceTransactions ?? context.transactions;
-    const baseTransactions = shouldUseSourceTransactions(context, sourceText)
+    const baseTransactions = shouldUseSourceTransactions(context, plan, sourceText)
       ? sourceTransactions
       : context.transactions;
     const transactions = applyFilters(baseTransactions, plan, context.createdAt, sourceText);
@@ -279,7 +279,11 @@ function selectMetricTransactions(
   return transactions;
 }
 
-function shouldUseSourceTransactions(context: ConversationContext, sourceText?: string): boolean {
+function shouldUseSourceTransactions(
+  context: ConversationContext,
+  plan: CalculationPlan,
+  sourceText?: string,
+): boolean {
   if (!sourceText || !context.sourceTransactions) {
     return false;
   }
@@ -291,7 +295,9 @@ function shouldUseSourceTransactions(context: ConversationContext, sourceText?: 
       normalizedText,
     );
 
-  return mentionsCategory && mentionsMonth;
+  const hasCategoryFilter = Boolean(plan.filters?.category || plan.filters?.categories?.length);
+
+  return (mentionsCategory && mentionsMonth) || hasCategoryFilter;
 }
 
 function roundMoney(value: number): number {

@@ -7,6 +7,7 @@ import type { SheetsService } from '../services/sheets.js';
 import type { WhatsAppService } from '../services/whatsapp.js';
 import type { CalculationPlan } from '../types/calculationPlan.js';
 import type { WhatsAppWebhookPayload } from '../types/whatsapp.js';
+import { normalizeCategory } from '../utils/categories.js';
 import type { Logger } from '../utils/logger.js';
 
 export interface WebhookRouterDependencies {
@@ -182,7 +183,7 @@ async function tryProcessCalculationPlan(
 
   try {
     const plan =
-      createDeterministicFollowUpPlan(messageText) ??
+      createDeterministicFollowUpPlan(messageText, context) ??
       (await dependencies.openAIService.extractCalculationPlan(
         messageText,
         dependencies.conversationService.summarizeContext(context),
@@ -208,8 +209,29 @@ async function tryProcessCalculationPlan(
   }
 }
 
-function createDeterministicFollowUpPlan(messageText: string): CalculationPlan | undefined {
+function createDeterministicFollowUpPlan(
+  messageText: string,
+  context: {
+    transactions: Array<{ category: string }>;
+    sourceTransactions?: Array<{ category: string }>;
+  },
+): CalculationPlan | undefined {
   const normalizedText = messageText.toLowerCase();
+  const mentionedCategory = findMentionedCategory(messageText, [
+    ...(context.sourceTransactions ?? []),
+    ...context.transactions,
+  ]);
+
+  if (mentionedCategory && /\b(?:list|show|transactions?|details?)\b/.test(normalizedText)) {
+    return {
+      source: 'previous_transactions',
+      operation: 'list',
+      metric: 'expenses',
+      filters: {
+        category: mentionedCategory,
+      },
+    };
+  }
 
   if (!/\bcategor(?:y|ies)\b/.test(normalizedText)) {
     return undefined;
@@ -221,6 +243,26 @@ function createDeterministicFollowUpPlan(messageText: string): CalculationPlan |
     groupBy: 'category',
     metric: 'expenses',
   };
+}
+
+function findMentionedCategory(
+  messageText: string,
+  transactions: Array<{ category: string }>,
+): string | undefined {
+  const normalizedText = normalizeCategory(messageText);
+  const categories = [...new Set(transactions.map((transaction) => transaction.category))].sort(
+    (left, right) => right.length - left.length,
+  );
+
+  return categories.find((category) => {
+    const normalizedCategory = normalizeCategory(category);
+
+    return new RegExp(`(?:^|\\s)${escapeRegExp(normalizedCategory)}(?:\\s|$)`).test(normalizedText);
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function sendReplySafely(

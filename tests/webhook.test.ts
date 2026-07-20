@@ -607,4 +607,111 @@ describe('processWebhookPayload', () => {
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
   });
+
+  it('lists a newly mentioned category from source transactions instead of repeating the last breakdown', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('Here are the March Health transactions.');
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 2, 21),
+        merchant: 'Any Hour Services',
+        category: 'Home Maintenance',
+        amount: -28,
+      },
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 2, 23),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -120,
+      },
+    ];
+    const context = {
+      transactions: sourceTransactions.slice(0, 1),
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      lastResult: sourceTransactions.slice(0, 1),
+      transactionCount: 1,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(true),
+      getBreakdownContext: vi.fn().mockReturnValue(context),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn(),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn().mockReturnValue('Wrong repeated home maintenance list.'),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-8',
+          timestamp: '1770000007',
+          text: 'thanks! list out each of the health transactions for march',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: new PlanExecutorService(new CalculatorService()),
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'thanks! list out each of the health transactions for march',
+      result: [
+        {
+          date: new Date(2026, 2, 22),
+          merchant: 'Pharmacy',
+          category: 'Health',
+          amount: -40,
+        },
+        {
+          date: new Date(2026, 2, 23),
+          merchant: 'Doctor',
+          category: 'Health',
+          amount: -120,
+        },
+      ],
+      transactionCount: 2,
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'Here are the March Health transactions.',
+    );
+    expect(extractCalculationPlan).not.toHaveBeenCalled();
+    expect(conversationService.formatBreakdown).not.toHaveBeenCalled();
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
 });

@@ -328,6 +328,85 @@ describe('PlanExecutorService', () => {
     ]);
   });
 
+  it('uses preserved source transactions when listing a different category after a narrowed result', () => {
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 2, 21),
+        merchant: 'Any Hour Services',
+        category: 'Home Maintenance',
+        amount: -28,
+      },
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 2, 23),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -120,
+      },
+      {
+        date: new Date(2026, 3, 1),
+        merchant: 'Clinic',
+        category: 'Health',
+        amount: -75,
+      },
+    ];
+    const context: ConversationContext = {
+      transactions: sourceTransactions.slice(0, 1),
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 1,
+      lastResult: sourceTransactions.slice(0, 1),
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'list',
+        metric: 'expenses',
+        filters: {
+          category: 'Health',
+        },
+      },
+      context,
+      'thanks! list out each of the health transactions for march',
+    );
+
+    expect(result?.transactionCount).toBe(2);
+    expect(result?.transactions).toEqual([
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 2, 23),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -120,
+      },
+    ]);
+    expect(result?.result).toEqual([
+      {
+        date: new Date(2026, 2, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -40,
+      },
+      {
+        date: new Date(2026, 2, 23),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -120,
+      },
+    ]);
+  });
+
   it('groups previous compared categories by month and category', () => {
     const context: ConversationContext = {
       transactions: [
