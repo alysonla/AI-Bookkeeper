@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import type { CalculationPlan } from '../types/calculationPlan.js';
 import type { StructuredIntent } from '../types/intent.js';
 import {
+  calculationPlanSystemPrompt,
   intentExtractionSystemPrompt,
   responseGenerationSystemPrompt,
   smartReplySystemPrompt,
@@ -67,6 +69,60 @@ const structuredIntentSchema = z.object({
     .number()
     .int()
     .positive()
+    .nullable()
+    .transform((value) => value ?? undefined),
+});
+
+const calculationPlanSchema = z.object({
+  source: z.enum(['previous_result', 'previous_transactions', 'transactions']),
+  operation: z.enum([
+    'sum',
+    'average',
+    'count',
+    'top_n',
+    'group_by',
+    'list',
+    'derive_from_previous',
+    'unknown',
+  ]),
+  filters: z
+    .object({
+      category: z
+        .string()
+        .nullable()
+        .transform((value) => value ?? undefined),
+      merchant: z
+        .string()
+        .nullable()
+        .transform((value) => value ?? undefined),
+      excludeCategories: z
+        .array(z.string())
+        .nullable()
+        .transform((value) => value ?? undefined),
+    })
+    .nullable()
+    .transform((value) => value ?? undefined),
+  groupBy: z
+    .enum(['merchant', 'category', 'merchant_category', 'month'])
+    .nullable()
+    .transform((value) => value ?? undefined),
+  metric: z
+    .enum(['amount', 'expenses', 'income', 'cash_flow'])
+    .nullable()
+    .transform((value) => value ?? undefined),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  divisor: z
+    .number()
+    .positive()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  approximate: z
+    .boolean()
     .nullable()
     .transform((value) => value ?? undefined),
 });
@@ -156,6 +212,104 @@ export class OpenAIService {
     });
 
     return structuredIntentSchema.parse(JSON.parse(response.output_text));
+  }
+
+  /** Plans a follow-up calculation using existing conversation context, without doing math. */
+  async extractCalculationPlan(
+    question: string,
+    context: Record<string, unknown>,
+  ): Promise<CalculationPlan> {
+    const startedAt = Date.now();
+    const response = await this.client.responses.create({
+      model: this.options.model,
+      input: [
+        {
+          role: 'system',
+          content: calculationPlanSystemPrompt,
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            question,
+            context,
+          }),
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'calculation_plan',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'source',
+              'operation',
+              'filters',
+              'groupBy',
+              'metric',
+              'limit',
+              'divisor',
+              'approximate',
+            ],
+            properties: {
+              source: {
+                type: 'string',
+                enum: ['previous_result', 'previous_transactions', 'transactions'],
+              },
+              operation: {
+                type: 'string',
+                enum: [
+                  'sum',
+                  'average',
+                  'count',
+                  'top_n',
+                  'group_by',
+                  'list',
+                  'derive_from_previous',
+                  'unknown',
+                ],
+              },
+              filters: {
+                anyOf: [
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['category', 'merchant', 'excludeCategories'],
+                    properties: {
+                      category: { type: ['string', 'null'] },
+                      merchant: { type: ['string', 'null'] },
+                      excludeCategories: {
+                        anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+                      },
+                    },
+                  },
+                  { type: 'null' },
+                ],
+              },
+              groupBy: {
+                type: ['string', 'null'],
+                enum: ['merchant', 'category', 'merchant_category', 'month', null],
+              },
+              metric: {
+                type: ['string', 'null'],
+                enum: ['amount', 'expenses', 'income', 'cash_flow', null],
+              },
+              limit: { type: ['integer', 'null'] },
+              divisor: { type: ['number', 'null'] },
+              approximate: { type: ['boolean', 'null'] },
+            },
+          },
+        },
+      },
+    });
+
+    this.options.logger?.info('Extracted OpenAI calculation plan.', {
+      durationMs: Date.now() - startedAt,
+    });
+
+    return calculationPlanSchema.parse(JSON.parse(response.output_text));
   }
 
   /** Turns completed deterministic results into a friendly conversational reply. */

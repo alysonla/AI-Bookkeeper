@@ -1,0 +1,133 @@
+import { describe, expect, it } from 'vitest';
+import type { ConversationContext } from '../src/services/conversation.js';
+import { CalculatorService } from '../src/services/calculator.js';
+import { PlanExecutorService } from '../src/services/planExecutor.js';
+
+const transactions = [
+  {
+    date: new Date('2026-01-02'),
+    merchant: 'Costco',
+    category: 'Groceries',
+    amount: -120,
+  },
+  {
+    date: new Date('2026-01-05'),
+    merchant: 'Target',
+    category: 'Groceries',
+    amount: -80,
+  },
+  {
+    date: new Date('2026-01-08'),
+    merchant: 'Payroll',
+    category: 'Income',
+    amount: 5000,
+  },
+  {
+    date: new Date('2026-01-10'),
+    merchant: 'Withdrawal Transfer to *4748',
+    category: 'Transfer',
+    amount: -500,
+  },
+];
+
+describe('PlanExecutorService', () => {
+  const service = new PlanExecutorService(new CalculatorService());
+
+  it('derives a monthly average from the previous numeric result', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+      lastNumericResult: -49149.74,
+      transactionCount: 665,
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_result',
+        operation: 'average',
+        metric: 'expenses',
+        divisor: 6,
+        approximate: true,
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual({
+      value: 8191.62,
+      operation: 'average',
+      divisor: 6,
+      sourceValue: 49149.74,
+      approximate: true,
+    });
+    expect(result?.transactionCount).toBe(4);
+  });
+
+  it('filters previous transactions and sums expenses without transfers', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'sum',
+        metric: 'expenses',
+        filters: {
+          merchant: 'Costco',
+          excludeCategories: ['transfer', 'transfers'],
+        },
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual({
+      totalSpending: 120,
+      signedTotal: -120,
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result?.transactionCount).toBe(1);
+  });
+
+  it('groups previous expense transactions by category', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'group_by',
+        metric: 'expenses',
+        groupBy: 'category',
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual([
+      {
+        category: 'Groceries',
+        total: -200,
+        count: 2,
+      },
+    ]);
+  });
+
+  it('does not execute unknown plans', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+    };
+
+    expect(
+      service.execute(
+        {
+          source: 'transactions',
+          operation: 'unknown',
+        },
+        context,
+      ),
+    ).toBeUndefined();
+  });
+});

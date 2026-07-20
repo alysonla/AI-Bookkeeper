@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { ConversationService } from '../services/conversation.js';
 import type { IntentService } from '../services/intent.js';
 import type { OpenAIService } from '../services/openai.js';
+import type { PlanExecutorService } from '../services/planExecutor.js';
 import type { SheetsService } from '../services/sheets.js';
 import type { WhatsAppService } from '../services/whatsapp.js';
 import type { WhatsAppWebhookPayload } from '../types/whatsapp.js';
@@ -13,6 +14,7 @@ export interface WebhookRouterDependencies {
   sheetsService: SheetsService;
   intentService: IntentService;
   conversationService?: ConversationService;
+  planExecutorService?: PlanExecutorService;
   logger: Logger;
   whatsappSmokeTest: boolean;
   whatsappSmartReplies: boolean;
@@ -90,13 +92,43 @@ export async function processWebhookPayload(
           return;
         }
 
+        const plannedResult = await tryProcessCalculationPlan(
+          dependencies,
+          message.from,
+          message.text,
+        );
+
+        if (plannedResult) {
+          const reply = await dependencies.openAIService.generateResponse({
+            question: message.text,
+            result: plannedResult.result,
+            transactionCount: plannedResult.transactionCount,
+          });
+
+          dependencies.conversationService?.saveCalculationContext(message.from, {
+            question: message.text,
+            result: plannedResult.result,
+            transactionCount: plannedResult.transactionCount,
+            transactions: plannedResult.transactions,
+          });
+
+          await dependencies.whatsappService.sendReply(message.from, reply);
+          dependencies.logger.info('Processed WhatsApp calculation-plan follow-up message.', {
+            messageId: message.id,
+            durationMs: Date.now() - startedAt,
+          });
+          return;
+        }
+
         const intent = await dependencies.openAIService.extractIntent(message.text);
         const transactions = await dependencies.sheetsService.listTransactions();
         const calculation = dependencies.intentService.processIntent(intent, transactions);
-        dependencies.conversationService?.saveBreakdownContext(
-          message.from,
-          calculation.transactions,
-        );
+        dependencies.conversationService?.saveCalculationContext(message.from, {
+          question: message.text,
+          result: calculation.result,
+          transactionCount: calculation.transactionCount,
+          transactions: calculation.transactions,
+        });
         const reply = await dependencies.openAIService.generateResponse({
           question: message.text,
           result: calculation.result,
@@ -123,6 +155,43 @@ export async function processWebhookPayload(
       }
     }),
   );
+}
+
+async function tryProcessCalculationPlan(
+  dependencies: WebhookRouterDependencies,
+  userId: string,
+  messageText: string,
+) {
+  const context = dependencies.conversationService?.getContext(userId);
+
+  if (!context || !dependencies.planExecutorService || !dependencies.conversationService) {
+    return undefined;
+  }
+
+  try {
+    const plan = await dependencies.openAIService.extractCalculationPlan(
+      messageText,
+      dependencies.conversationService.summarizeContext(context),
+    );
+    const result = dependencies.planExecutorService.execute(plan, context);
+
+    if (!result) {
+      return undefined;
+    }
+
+    dependencies.logger.info('Executed calculation plan from conversation context.', {
+      operation: plan.operation,
+      source: plan.source,
+    });
+
+    return result;
+  } catch (error) {
+    dependencies.logger.warn('Could not execute calculation plan from conversation context.', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return undefined;
+  }
 }
 
 async function sendReplySafely(
