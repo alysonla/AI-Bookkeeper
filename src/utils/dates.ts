@@ -44,6 +44,14 @@ export function resolveDateRange(
 
       throw new Error('Custom date ranges require startDate and endDate.');
     case 'all_time':
+      if (sourceText) {
+        const monthRange = resolveMonthNameRange(sourceText, now);
+
+        if (monthRange) {
+          return monthRange;
+        }
+      }
+
       return { start: new Date(0), end: new Date(8640000000000000) };
   }
 }

@@ -36,6 +36,10 @@ export class IntentService {
 
     const filteredTransactions = this.filterByIntent(intent, nonTransferTransactions);
 
+    if (sourceText && isCategoryTotalsQuestion(sourceText)) {
+      return this.categoryTotals(filteredTransactions);
+    }
+
     switch (intent.intent) {
       case 'sum_category':
         if (intent.category && isAllCategoryRequest(intent.category)) {
@@ -203,5 +207,16 @@ function isTransfer(transaction: Transaction): boolean {
 function isAllCategoryRequest(category: string): boolean {
   return ['all', 'all category', 'all categories', 'every category', 'each category'].includes(
     normalizeCategory(category),
+  );
+}
+
+function isCategoryTotalsQuestion(sourceText: string): boolean {
+  const normalizedText = sourceText.toLowerCase();
+
+  return (
+    /\b(all|each|every)\s+categor(?:y|ies)\b/.test(normalizedText) ||
+    /\bby\s+categor(?:y|ies)\b/.test(normalizedText) ||
+    /\bcategor(?:y|ies)\s+totals?\b/.test(normalizedText) ||
+    /\btotals?\s+for\s+(all|each|every)\s+categor(?:y|ies)\b/.test(normalizedText)
   );
 }

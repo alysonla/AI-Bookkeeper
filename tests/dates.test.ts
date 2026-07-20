@@ -41,4 +41,17 @@ describe('resolveDateRange', () => {
     expect(range.start).toEqual(new Date(2025, 11, 1));
     expect(range.end).toEqual(new Date(2025, 11, 31, 23, 59, 59, 999));
   });
+
+  it('uses source text month names when the model falls back to all_time', () => {
+    const range = resolveDateRange(
+      'all_time',
+      new Date('2026-07-19T12:00:00Z'),
+      undefined,
+      undefined,
+      'list out the total for all categories for the month of march',
+    );
+
+    expect(range.start).toEqual(new Date(2026, 2, 1));
+    expect(range.end).toEqual(new Date(2026, 2, 31, 23, 59, 59, 999));
+  });
 });

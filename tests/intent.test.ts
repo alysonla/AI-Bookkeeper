@@ -186,6 +186,37 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(2);
   });
 
+  it('forces category totals from source text when the model returns the wrong intent', () => {
+    const result = service.processIntent(
+      {
+        intent: 'monthly_totals',
+        dateRange: 'all_time',
+      },
+      [
+        { date: new Date(2026, 2, 1), merchant: 'Vet', category: 'Milo', amount: -100 },
+        {
+          date: new Date(2026, 2, 15),
+          merchant: 'Hardware Store',
+          category: 'Home Maintenance',
+          amount: -50,
+        },
+        { date: new Date(2026, 3, 1), merchant: 'Cafe', category: 'Dining', amount: -25 },
+      ],
+      new Date('2026-07-19'),
+      'list out the total for all categories for the month of march',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'category_totals',
+      categories: [
+        { category: 'Milo', total: -100, count: 1 },
+        { category: 'Home Maintenance', total: -50, count: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(2);
+  });
+
   it('includes categories in biggest expense results', () => {
     const result = service.processIntent(
       {
