@@ -122,7 +122,12 @@ export async function processWebhookPayload(
 
         const intent = await dependencies.openAIService.extractIntent(message.text);
         const transactions = await dependencies.sheetsService.listTransactions();
-        const calculation = dependencies.intentService.processIntent(intent, transactions);
+        const calculation = dependencies.intentService.processIntent(
+          intent,
+          transactions,
+          new Date(),
+          message.text,
+        );
         dependencies.conversationService?.saveCalculationContext(message.from, {
           question: message.text,
           result: calculation.result,

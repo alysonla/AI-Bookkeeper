@@ -15,4 +15,30 @@ describe('resolveDateRange', () => {
     expect(range.start).toEqual(new Date(2026, 0, 1));
     expect(range.end).toEqual(new Date(2026, 5, 30, 23, 59, 59, 999));
   });
+
+  it('resolves custom month names when explicit custom dates are missing', () => {
+    const range = resolveDateRange(
+      'custom',
+      new Date('2026-07-19T12:00:00Z'),
+      undefined,
+      undefined,
+      'list out the total for all categories for the month of march',
+    );
+
+    expect(range.start).toEqual(new Date(2026, 2, 1));
+    expect(range.end).toEqual(new Date(2026, 2, 31, 23, 59, 59, 999));
+  });
+
+  it('uses the previous year for future month names without an explicit year', () => {
+    const range = resolveDateRange(
+      'custom',
+      new Date('2026-01-15T12:00:00Z'),
+      undefined,
+      undefined,
+      'show me December totals',
+    );
+
+    expect(range.start).toEqual(new Date(2025, 11, 1));
+    expect(range.end).toEqual(new Date(2025, 11, 31, 23, 59, 59, 999));
+  });
 });

@@ -10,6 +10,7 @@ export function resolveDateRange(
   now = new Date(),
   customStart?: string,
   customEnd?: string,
+  sourceText?: string,
 ): DateRange {
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -29,10 +30,19 @@ export function resolveDateRange(
     case 'last_year':
       return { start: new Date(year - 1, 0, 1), end: endOfDay(new Date(year - 1, 11, 31)) };
     case 'custom':
-      if (!customStart || !customEnd) {
-        throw new Error('Custom date ranges require startDate and endDate.');
+      if (customStart && customEnd) {
+        return { start: startOfDay(new Date(customStart)), end: endOfDay(new Date(customEnd)) };
       }
-      return { start: startOfDay(new Date(customStart)), end: endOfDay(new Date(customEnd)) };
+
+      if (sourceText) {
+        const monthRange = resolveMonthNameRange(sourceText, now);
+
+        if (monthRange) {
+          return monthRange;
+        }
+      }
+
+      throw new Error('Custom date ranges require startDate and endDate.');
     case 'all_time':
       return { start: new Date(0), end: new Date(8640000000000000) };
   }
@@ -56,4 +66,42 @@ function startOfDay(date: Date): Date {
 
 function endOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function resolveMonthNameRange(sourceText: string, now: Date): DateRange | undefined {
+  const lowerSourceText = sourceText.toLowerCase();
+  const months = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
+
+  const monthIndex = months.findIndex((monthName) =>
+    new RegExp(`\\b${monthName.slice(0, 3)}(?:${monthName.slice(3)})?\\b`).test(lowerSourceText),
+  );
+
+  if (monthIndex === -1) {
+    return undefined;
+  }
+
+  const explicitYear = lowerSourceText.match(/\b(20\d{2})\b/)?.[1];
+  const resolvedYear = explicitYear
+    ? Number(explicitYear)
+    : monthIndex > now.getMonth()
+      ? now.getFullYear() - 1
+      : now.getFullYear();
+
+  return {
+    start: startOfMonth(resolvedYear, monthIndex),
+    end: endOfMonth(resolvedYear, monthIndex),
+  };
 }

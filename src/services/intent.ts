@@ -18,8 +18,15 @@ export class IntentService {
     intent: StructuredIntent,
     transactions: Transaction[],
     now = new Date(),
+    sourceText?: string,
   ): IntentProcessorResult {
-    const dateRange = resolveDateRange(intent.dateRange, now, intent.startDate, intent.endDate);
+    const dateRange = resolveDateRange(
+      intent.dateRange,
+      now,
+      intent.startDate,
+      intent.endDate,
+      sourceText,
+    );
     const scopedTransactions = transactions.filter((transaction) =>
       isWithinDateRange(transaction.date, dateRange),
     );
