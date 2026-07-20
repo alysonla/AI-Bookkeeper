@@ -4,10 +4,13 @@ export type IntentName =
   | 'income_total'
   | 'expense_total'
   | 'cash_flow'
+  | 'category_totals'
+  | 'category_expense_comparison'
   | 'biggest_expenses'
   | 'biggest_individual_purchases'
   | 'monthly_totals'
   | 'average_monthly_spending'
+  | 'median_monthly_spending'
   | 'unknown';
 
 export type DateRangePreset =
@@ -24,6 +27,7 @@ export type DateRangePreset =
 export interface StructuredIntent {
   intent: IntentName;
   category?: string;
+  categories?: string[];
   merchant?: string;
   dateRange: DateRangePreset;
   startDate?: string;

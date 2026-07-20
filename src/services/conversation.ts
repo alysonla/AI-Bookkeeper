@@ -3,7 +3,20 @@ import { formatCurrency } from '../utils/currency.js';
 
 export interface ConversationContext {
   transactions: Transaction[];
+  sourceTransactions?: Transaction[];
   createdAt: Date;
+  lastQuestion?: string;
+  lastResult?: unknown;
+  lastNumericResult?: number;
+  transactionCount?: number;
+}
+
+export interface ConversationContextInput {
+  transactions: Transaction[];
+  sourceTransactions?: Transaction[];
+  question?: string;
+  result?: unknown;
+  transactionCount?: number;
 }
 
 export class ConversationService {
@@ -12,9 +25,20 @@ export class ConversationService {
   constructor(private readonly ttlMs = 10 * 60 * 1000) {}
 
   saveBreakdownContext(userId: string, transactions: Transaction[], now = new Date()): void {
+    this.saveCalculationContext(userId, { transactions }, now);
+  }
+
+  saveCalculationContext(userId: string, input: ConversationContextInput, now = new Date()): void {
     this.contexts.set(userId, {
-      transactions,
+      transactions: input.transactions,
+      sourceTransactions: input.sourceTransactions ?? input.transactions,
       createdAt: now,
+      ...(input.question ? { lastQuestion: input.question } : {}),
+      ...(input.result !== undefined ? { lastResult: input.result } : {}),
+      ...(typeof input.transactionCount === 'number'
+        ? { transactionCount: input.transactionCount }
+        : {}),
+      ...extractNumericResult(input.result),
     });
   }
 
@@ -31,6 +55,21 @@ export class ConversationService {
     }
 
     return context;
+  }
+
+  getContext(userId: string, now = new Date()): ConversationContext | undefined {
+    return this.getBreakdownContext(userId, now);
+  }
+
+  summarizeContext(context: ConversationContext): Record<string, unknown> {
+    return {
+      lastQuestion: context.lastQuestion ?? null,
+      lastResult: context.lastResult ?? null,
+      lastNumericResult: context.lastNumericResult ?? null,
+      transactionCount: context.transactionCount ?? context.transactions.length,
+      availableTransactionCount: context.transactions.length,
+      sourceTransactionCount: context.sourceTransactions?.length ?? context.transactions.length,
+    };
   }
 
   isAffirmativeReply(message: string): boolean {
@@ -102,4 +141,30 @@ export class ConversationService {
 
     return `Here is the breakdown:\n${lines.join('\n')}${suffix}`;
   }
+}
+
+function extractNumericResult(result: unknown): { lastNumericResult?: number } {
+  if (typeof result === 'number') {
+    return { lastNumericResult: result };
+  }
+
+  if (!result || typeof result !== 'object') {
+    return {};
+  }
+
+  const record = result as Record<string, unknown>;
+  const candidates = [
+    record.totalSpending,
+    record.averageMonthlySpending,
+    record.medianMonthlySpending,
+    record.net,
+    record.expenses,
+    record.income,
+    record.value,
+  ];
+  const numericValue = candidates.find(
+    (candidate): candidate is number => typeof candidate === 'number',
+  );
+
+  return typeof numericValue === 'number' ? { lastNumericResult: numericValue } : {};
 }

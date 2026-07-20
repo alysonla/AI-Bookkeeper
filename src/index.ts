@@ -7,6 +7,7 @@ import { CalculatorService } from './services/calculator.js';
 import { ConversationService } from './services/conversation.js';
 import { IntentService } from './services/intent.js';
 import { OpenAIService } from './services/openai.js';
+import { PlanExecutorService } from './services/planExecutor.js';
 import { SheetsService } from './services/sheets.js';
 import { WhatsAppService } from './services/whatsapp.js';
 import { createLogger } from './utils/logger.js';
@@ -17,6 +18,7 @@ const logger = createLogger(config.logLevel);
 const calculatorService = new CalculatorService();
 const conversationService = new ConversationService();
 const intentService = new IntentService(calculatorService);
+const planExecutorService = new PlanExecutorService(calculatorService);
 const openAIService = new OpenAIService({
   ...config.openai,
   logger,
@@ -42,6 +44,7 @@ app.use(
     sheetsService,
     intentService,
     conversationService,
+    planExecutorService,
     logger,
     whatsappSmokeTest: config.features.whatsappSmokeTest,
     whatsappSmartReplies: config.features.whatsappSmartReplies,
