@@ -1,5 +1,6 @@
 import type { Transaction } from '../models/transaction.js';
 import type { StructuredIntent } from '../types/intent.js';
+import { matchesCategory, normalizeCategory } from '../utils/categories.js';
 import { isWithinDateRange, resolveDateRange } from '../utils/dates.js';
 import type { CalculatorService } from './calculator.js';
 
@@ -129,15 +130,15 @@ export class IntentService {
 
   private filterByIntent(intent: StructuredIntent, transactions: Transaction[]): Transaction[] {
     if (intent.intent === 'sum_category' && intent.category) {
-      return transactions.filter(
-        (transaction) => transaction.category.toLowerCase() === intent.category?.toLowerCase(),
+      return transactions.filter((transaction) =>
+        matchesCategory(transaction.category, intent.category ?? ''),
       );
     }
 
     if (intent.intent === 'category_expense_comparison' && intent.categories?.length) {
-      const categories = new Set(intent.categories.map((category) => category.toLowerCase()));
+      const categories = new Set(intent.categories.map((category) => normalizeCategory(category)));
       return transactions.filter((transaction) =>
-        categories.has(transaction.category.toLowerCase()),
+        categories.has(normalizeCategory(transaction.category)),
       );
     }
 
@@ -160,6 +161,5 @@ export class IntentService {
 }
 
 function isTransfer(transaction: Transaction): boolean {
-  const category = transaction.category.trim().toLowerCase();
-  return category === 'transfer' || category === 'transfers';
+  return normalizeCategory(transaction.category) === 'transfer';
 }

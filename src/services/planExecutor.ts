@@ -1,5 +1,6 @@
 import type { Transaction } from '../models/transaction.js';
 import type { CalculationPlan } from '../types/calculationPlan.js';
+import { matchesCategory, normalizeCategory } from '../utils/categories.js';
 import type { ConversationContext } from './conversation.js';
 import type { CalculatorService } from './calculator.js';
 
@@ -177,26 +178,25 @@ export class PlanExecutorService {
 function applyFilters(transactions: Transaction[], plan: CalculationPlan): Transaction[] {
   const excludeCategories = new Set(
     (plan.filters?.excludeCategories ?? ['transfer', 'transfers']).map((category) =>
-      category.toLowerCase(),
+      normalizeCategory(category),
     ),
   );
 
   return transactions.filter((transaction) => {
-    if (excludeCategories.has(transaction.category.toLowerCase())) {
+    if (excludeCategories.has(normalizeCategory(transaction.category))) {
       return false;
     }
 
-    if (
-      plan.filters?.category &&
-      transaction.category.toLowerCase() !== plan.filters.category.toLowerCase()
-    ) {
+    if (plan.filters?.category && !matchesCategory(transaction.category, plan.filters.category)) {
       return false;
     }
 
     if (plan.filters?.categories?.length) {
-      const categories = new Set(plan.filters.categories.map((category) => category.toLowerCase()));
+      const categories = new Set(
+        plan.filters.categories.map((category) => normalizeCategory(category)),
+      );
 
-      if (!categories.has(transaction.category.toLowerCase())) {
+      if (!categories.has(normalizeCategory(transaction.category))) {
         return false;
       }
     }

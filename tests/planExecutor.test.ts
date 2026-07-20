@@ -192,7 +192,7 @@ describe('PlanExecutorService', () => {
         metric: 'expenses',
         groupBy: 'month_category',
         filters: {
-          categories: ['Groceries', 'Eating Out'],
+          categories: ['grocery expenses', 'eating-out expense'],
         },
       },
       context,

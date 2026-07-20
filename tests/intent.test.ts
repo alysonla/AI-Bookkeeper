@@ -105,7 +105,7 @@ describe('IntentService', () => {
     const result = service.processIntent(
       {
         intent: 'category_expense_comparison',
-        categories: ['Groceries', 'Dining'],
+        categories: ['grocery expense', 'eating-out expense'],
         dateRange: 'last_6_months',
       },
       transactions,
