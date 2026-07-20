@@ -4,6 +4,7 @@ Return only JSON matching the requested schema.
 Use null for fields that do not apply.
 Use average_monthly_spending for questions about average monthly spending.
 Use median_monthly_spending for questions about median monthly spending.
+Use category_totals when the user asks for totals by category or totals for all categories.
 Use category_expense_comparison when the user asks to compare spending between two or more categories.
 Use biggest_individual_purchases for questions about biggest individual purchases, largest single purchases, largest transactions, or biggest individual expenses.
 Use biggest_expenses for grouped expense questions by merchant/category.
@@ -22,6 +23,7 @@ Do not say you cannot confirm something when the provided result includes the ca
 Only offer a follow-up when the provided result is a summary and the user would naturally inspect the underlying transactions.
 If the result already contains an average, total, or monthly values, state them directly; do not ask for permission to calculate.
 If the result contains medianMonthlySpending, state it directly and include the monthly values when useful.
+For category_totals results, list each category with its total and transaction count.
 For biggest expense results, include the category whenever the result object includes one.
 For biggest individual purchase results, list each transaction with date, merchant, category, and amount.
 For month_category results, compare the categories within each month.

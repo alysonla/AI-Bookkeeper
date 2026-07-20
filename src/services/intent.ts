@@ -38,6 +38,15 @@ export class IntentService {
 
     switch (intent.intent) {
       case 'sum_category':
+        if (intent.category && isAllCategoryRequest(intent.category)) {
+          return this.categoryTotals(filteredTransactions);
+        }
+
+        return {
+          result: this.calculator.sum(filteredTransactions),
+          transactionCount: filteredTransactions.length,
+          transactions: filteredTransactions,
+        };
       case 'sum_merchant':
       case 'income_total':
       case 'expense_total':
@@ -52,6 +61,8 @@ export class IntentService {
           transactionCount: filteredTransactions.length,
           transactions: filteredTransactions,
         };
+      case 'category_totals':
+        return this.categoryTotals(filteredTransactions);
       case 'category_expense_comparison': {
         const expenseTransactions = filteredTransactions.filter(
           (transaction) => transaction.amount < 0,
@@ -136,7 +147,11 @@ export class IntentService {
   }
 
   private filterByIntent(intent: StructuredIntent, transactions: Transaction[]): Transaction[] {
-    if (intent.intent === 'sum_category' && intent.category) {
+    if (
+      intent.intent === 'sum_category' &&
+      intent.category &&
+      !isAllCategoryRequest(intent.category)
+    ) {
       return transactions.filter((transaction) =>
         matchesCategory(transaction.category, intent.category ?? ''),
       );
@@ -165,8 +180,28 @@ export class IntentService {
 
     return transactions;
   }
+
+  private categoryTotals(transactions: Transaction[]): IntentProcessorResult {
+    const expenseTransactions = transactions.filter((transaction) => transaction.amount < 0);
+
+    return {
+      result: {
+        operation: 'category_totals',
+        categories: this.calculator.groupByCategory(expenseTransactions),
+        excludedCategories: ['transfer', 'transfers'],
+      },
+      transactionCount: expenseTransactions.length,
+      transactions: expenseTransactions,
+    };
+  }
 }
 
 function isTransfer(transaction: Transaction): boolean {
   return normalizeCategory(transaction.category) === 'transfer';
+}
+
+function isAllCategoryRequest(category: string): boolean {
+  return ['all', 'all category', 'all categories', 'every category', 'each category'].includes(
+    normalizeCategory(category),
+  );
 }

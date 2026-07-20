@@ -4,6 +4,7 @@ export type IntentName =
   | 'income_total'
   | 'expense_total'
   | 'cash_flow'
+  | 'category_totals'
   | 'category_expense_comparison'
   | 'biggest_expenses'
   | 'biggest_individual_purchases'

@@ -125,7 +125,7 @@ describe('IntentService', () => {
   it('resolves month names from the question when custom intent dates are missing', () => {
     const result = service.processIntent(
       {
-        intent: 'category_expense_comparison',
+        intent: 'category_totals',
         dateRange: 'custom',
       },
       [
@@ -143,6 +143,40 @@ describe('IntentService', () => {
     );
 
     expect(result.result).toEqual({
+      operation: 'category_totals',
+      categories: [
+        { category: 'Milo', total: -100, count: 1 },
+        { category: 'Home Maintenance', total: -50, count: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(2);
+  });
+
+  it('treats all categories as category totals when the model returns sum_category', () => {
+    const result = service.processIntent(
+      {
+        intent: 'sum_category',
+        category: 'all categories',
+        dateRange: 'custom',
+      },
+      [
+        { date: new Date(2026, 2, 1), merchant: 'Vet', category: 'Milo', amount: -100 },
+        {
+          date: new Date(2026, 2, 15),
+          merchant: 'Hardware Store',
+          category: 'Home Maintenance',
+          amount: -50,
+        },
+        { date: new Date(2026, 2, 20), merchant: 'Bank', category: 'Transfer', amount: -500 },
+        { date: new Date(2026, 3, 1), merchant: 'Cafe', category: 'Dining', amount: -25 },
+      ],
+      new Date('2026-07-19'),
+      'list out the total for all categories for the month of march',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'category_totals',
       categories: [
         { category: 'Milo', total: -100, count: 1 },
         { category: 'Home Maintenance', total: -50, count: 1 },
