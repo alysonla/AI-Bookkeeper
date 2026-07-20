@@ -874,4 +874,201 @@ describe('processWebhookPayload', () => {
       'Here are the March Home Maintenance transactions.',
     );
   });
+
+  it('does not save empty unknown calculations over useful conversation context', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+      intent: 'unknown',
+      dateRange: 'all_time',
+    });
+    const listTransactions = vi.fn<SheetsService['listTransactions']>().mockResolvedValue([]);
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('You are very welcome.');
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(undefined),
+      saveCalculationContext: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-10',
+          timestamp: '1770000009',
+          text: 'thanks penny, you are great!',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: new IntentService(new CalculatorService()),
+        conversationService: conversationService as unknown as ConversationService,
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'thanks penny, you are great!',
+      result: {
+        message: 'I could not determine which bookkeeping calculation to run.',
+      },
+      transactionCount: 0,
+    });
+    expect(conversationService.saveCalculationContext).not.toHaveBeenCalled();
+    expect(sendReply).toHaveBeenCalledWith('15551234567', 'You are very welcome.');
+  });
+
+  it('reads Sheets for category totals when the saved context has no transactions', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T12:00:00Z'));
+
+    try {
+      const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+      const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+        intent: 'category_totals',
+        dateRange: 'all_time',
+      });
+      const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+      const listTransactions = vi.fn<SheetsService['listTransactions']>().mockResolvedValue([
+        {
+          date: new Date(2026, 5, 5),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 5, 6),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -40,
+        },
+        {
+          date: new Date(2026, 5, 7),
+          merchant: 'Transfer',
+          category: 'Transfer',
+          amount: -999,
+        },
+        {
+          date: new Date(2026, 4, 1),
+          merchant: 'Vet',
+          category: 'Milo',
+          amount: -500,
+        },
+      ]);
+      const generateResponse = vi
+        .fn<OpenAIService['generateResponse']>()
+        .mockResolvedValue('Last month category totals are ready.');
+      const conversationService = {
+        isBreakdownRequest: vi.fn().mockReturnValue(false),
+        getBreakdownContext: vi.fn().mockReturnValue(undefined),
+        getContext: vi.fn().mockReturnValue({
+          transactions: [],
+          sourceTransactions: [],
+          createdAt: new Date('2026-07-20T11:55:00Z'),
+          lastQuestion: 'thanks penny, you are great!',
+          lastResult: {
+            message: 'I could not determine which bookkeeping calculation to run.',
+          },
+          transactionCount: 0,
+        }),
+        summarizeContext: vi.fn(),
+        saveCalculationContext: vi.fn(),
+      };
+
+      const whatsappService = {
+        parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+          {
+            from: '15551234567',
+            id: 'wamid-11',
+            timestamp: '1770000010',
+            text: 'how much did I spend last month - list out all the categories..',
+          },
+        ]),
+        sendReply,
+      } as unknown as WhatsAppService;
+
+      await processWebhookPayload(
+        {
+          whatsappService,
+          openAIService: {
+            extractIntent,
+            extractCalculationPlan,
+            generateResponse,
+            generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+          } as unknown as OpenAIService,
+          sheetsService: {
+            listTransactions,
+          } as unknown as SheetsService,
+          intentService: new IntentService(new CalculatorService()),
+          conversationService: conversationService as unknown as ConversationService,
+          planExecutorService: new PlanExecutorService(new CalculatorService()),
+          logger,
+          whatsappSmokeTest: false,
+          whatsappSmartReplies: false,
+        },
+        { object: 'whatsapp_business_account' },
+      );
+
+      const expectedTransactions = [
+        {
+          date: new Date(2026, 5, 5),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 5, 6),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -40,
+        },
+      ];
+      const expectedResult = {
+        operation: 'category_totals',
+        categories: [
+          { category: 'Groceries', total: -120, count: 1 },
+          { category: 'Eating Out', total: -40, count: 1 },
+        ],
+        excludedCategories: ['transfer', 'transfers'],
+      };
+
+      expect(extractCalculationPlan).not.toHaveBeenCalled();
+      expect(listTransactions).toHaveBeenCalledOnce();
+      expect(generateResponse).toHaveBeenCalledWith({
+        question: 'how much did I spend last month - list out all the categories..',
+        result: expectedResult,
+        transactionCount: 2,
+      });
+      expect(conversationService.saveCalculationContext).toHaveBeenCalledWith('15551234567', {
+        question: 'how much did I spend last month - list out all the categories..',
+        result: expectedResult,
+        transactionCount: 2,
+        transactions: expectedTransactions,
+        sourceTransactions: expectedTransactions,
+      });
+      expect(sendReply).toHaveBeenCalledWith(
+        '15551234567',
+        'Last month category totals are ready.',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

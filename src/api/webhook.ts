@@ -131,13 +131,15 @@ export async function processWebhookPayload(
           new Date(),
           message.text,
         );
-        dependencies.conversationService?.saveCalculationContext(message.from, {
-          question: message.text,
-          result: calculation.result,
-          transactionCount: calculation.transactionCount,
-          transactions: calculation.transactions,
-          sourceTransactions: calculation.sourceTransactions ?? calculation.transactions,
-        });
+        if (shouldSaveCalculationContext(intent.intent, calculation.transactionCount)) {
+          dependencies.conversationService?.saveCalculationContext(message.from, {
+            question: message.text,
+            result: calculation.result,
+            transactionCount: calculation.transactionCount,
+            transactions: calculation.transactions,
+            sourceTransactions: calculation.sourceTransactions ?? calculation.transactions,
+          });
+        }
         const reply = await dependencies.openAIService.generateResponse({
           question: message.text,
           result: calculation.result,
@@ -176,8 +178,9 @@ async function tryProcessCalculationPlan(
   }
 
   const context = dependencies.conversationService.getContext(userId);
+  const availableTransactions = context ? (context.sourceTransactions ?? context.transactions) : [];
 
-  if (!context) {
+  if (!context || availableTransactions.length === 0) {
     return undefined;
   }
 
@@ -207,6 +210,10 @@ async function tryProcessCalculationPlan(
 
     return undefined;
   }
+}
+
+function shouldSaveCalculationContext(intent: string, transactionCount: number): boolean {
+  return intent !== 'unknown' || transactionCount > 0;
 }
 
 function createDeterministicFollowUpPlan(

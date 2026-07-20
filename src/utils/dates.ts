@@ -35,20 +35,20 @@ export function resolveDateRange(
       }
 
       if (sourceText) {
-        const monthRange = resolveMonthNameRange(sourceText, now);
+        const textRange = resolveDateRangeFromText(sourceText, now);
 
-        if (monthRange) {
-          return monthRange;
+        if (textRange) {
+          return textRange;
         }
       }
 
       throw new Error('Custom date ranges require startDate and endDate.');
     case 'all_time':
       if (sourceText) {
-        const monthRange = resolveMonthNameRange(sourceText, now);
+        const textRange = resolveDateRangeFromText(sourceText, now);
 
-        if (monthRange) {
-          return monthRange;
+        if (textRange) {
+          return textRange;
         }
       }
 
@@ -74,6 +74,38 @@ function startOfDay(date: Date): Date {
 
 function endOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function resolveDateRangeFromText(sourceText: string, now: Date): DateRange | undefined {
+  const lowerSourceText = sourceText.toLowerCase();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  if (/\b(?:last|past)\s+month\b/.test(lowerSourceText)) {
+    return { start: startOfMonth(year, month - 1), end: endOfMonth(year, month - 1) };
+  }
+
+  if (/\bthis\s+month\b/.test(lowerSourceText)) {
+    return { start: startOfMonth(year, month), end: endOfMonth(year, month) };
+  }
+
+  if (/\b(?:last|past)\s+3\s+months?\b/.test(lowerSourceText)) {
+    return { start: startOfMonth(year, month - 3), end: endOfMonth(year, month - 1) };
+  }
+
+  if (/\b(?:last|past)\s+6\s+months?\b/.test(lowerSourceText)) {
+    return { start: startOfMonth(year, month - 6), end: endOfMonth(year, month - 1) };
+  }
+
+  if (/\b(?:this\s+year|year\s+to\s+date|so\s+far\s+this\s+year)\b/.test(lowerSourceText)) {
+    return { start: new Date(year, 0, 1), end: endOfDay(now) };
+  }
+
+  if (/\blast\s+year\b/.test(lowerSourceText)) {
+    return { start: new Date(year - 1, 0, 1), end: endOfDay(new Date(year - 1, 11, 31)) };
+  }
+
+  return resolveMonthNameRange(sourceText, now);
 }
 
 function resolveMonthNameRange(sourceText: string, now: Date): DateRange | undefined {
