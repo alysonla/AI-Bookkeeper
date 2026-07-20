@@ -9,6 +9,7 @@ export interface AppConfig {
   };
   features: {
     whatsappSmokeTest: boolean;
+    whatsappSmartReplies: boolean;
   };
   openai: {
     apiKey: string;
@@ -17,6 +18,8 @@ export interface AppConfig {
   googleSheets: {
     spreadsheetId: string;
     range: string;
+    cacheTtlMs: number;
+    keyFile?: string;
     serviceAccountEmail: string;
     privateKey: string;
   };

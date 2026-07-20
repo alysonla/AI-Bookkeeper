@@ -29,4 +29,58 @@ describe('CalculatorService', () => {
       { merchant: 'Costco', total: -140.25, count: 2 },
     ]);
   });
+
+  it('groups by merchant and category', () => {
+    expect(
+      calculator.groupByMerchantAndCategory([
+        { date: new Date('2026-01-01'), merchant: 'Target', category: 'Kids', amount: -100 },
+        { date: new Date('2026-01-02'), merchant: 'Target', category: 'Home', amount: -40 },
+        { date: new Date('2026-01-03'), merchant: 'Target', category: 'Kids', amount: -25 },
+      ]),
+    ).toEqual([
+      { merchant: 'Target', category: 'Kids', total: -125, count: 2 },
+      { merchant: 'Target', category: 'Home', total: -40, count: 1 },
+    ]);
+  });
+
+  it('calculates average monthly spending', () => {
+    expect(
+      calculator.averageMonthlySpending([
+        { date: new Date('2026-01-01'), merchant: 'Rent', category: 'Housing', amount: -1000 },
+        { date: new Date('2026-01-02'), merchant: 'Store', category: 'Groceries', amount: -200 },
+        { date: new Date('2026-02-01'), merchant: 'Rent', category: 'Housing', amount: -900 },
+      ]),
+    ).toEqual({
+      averageMonthlySpending: 1050,
+      totalSpending: 2100,
+      monthCount: 2,
+      monthlyExpenses: [
+        { month: '2026-01', expenses: 1200 },
+        { month: '2026-02', expenses: 900 },
+      ],
+    });
+  });
+
+  it('returns biggest individual purchases', () => {
+    expect(
+      calculator.biggestIndividualPurchases([
+        { date: new Date('2026-01-01'), merchant: 'Vet', category: 'Pets', amount: -500 },
+        { date: new Date('2026-01-02'), merchant: 'Target', category: 'Home', amount: -100 },
+        { date: new Date('2026-01-03'), merchant: 'Paycheck', category: 'Income', amount: 1000 },
+      ]),
+    ).toEqual([
+      {
+        date: new Date('2026-01-01'),
+        merchant: 'Vet',
+        category: 'Pets',
+        amount: -500,
+      },
+      {
+        date: new Date('2026-01-02'),
+        merchant: 'Target',
+        category: 'Home',
+        amount: -100,
+      },
+    ]);
+  });
 });

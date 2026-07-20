@@ -4,11 +4,15 @@ import type { StructuredIntent } from '../types/intent.js';
 import {
   intentExtractionSystemPrompt,
   responseGenerationSystemPrompt,
+  smartReplySystemPrompt,
 } from '../prompts/systemPrompt.js';
 
 export interface OpenAIServiceOptions {
   apiKey: string;
   model: string;
+  logger?: {
+    info(message: string, meta?: Record<string, unknown>): void;
+  };
 }
 
 export interface ResponseGenerationInput {
@@ -25,15 +29,25 @@ const structuredIntentSchema = z.object({
     'expense_total',
     'cash_flow',
     'biggest_expenses',
+    'biggest_individual_purchases',
     'monthly_totals',
+    'average_monthly_spending',
     'unknown',
   ]),
-  category: z.string().optional(),
-  merchant: z.string().optional(),
+  category: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  merchant: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? undefined),
   dateRange: z
     .enum([
       'this_month',
       'last_month',
+      'last_3_months',
+      'last_6_months',
       'this_year',
       'last_year',
       'year_to_date',
@@ -41,9 +55,20 @@ const structuredIntentSchema = z.object({
       'custom',
     ])
     .default('all_time'),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  limit: z.number().int().positive().optional(),
+  startDate: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  endDate: z
+    .string()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .transform((value) => value ?? undefined),
 });
 
 export class OpenAIService {
@@ -55,6 +80,7 @@ export class OpenAIService {
 
   /** Extracts structured bookkeeping intent. The model must not answer the user's question. */
   async extractIntent(question: string): Promise<StructuredIntent> {
+    const startedAt = Date.now();
     const response = await this.client.responses.create({
       model: this.options.model,
       input: [
@@ -75,7 +101,15 @@ export class OpenAIService {
           schema: {
             type: 'object',
             additionalProperties: false,
-            required: ['intent', 'dateRange'],
+            required: [
+              'intent',
+              'category',
+              'merchant',
+              'dateRange',
+              'startDate',
+              'endDate',
+              'limit',
+            ],
             properties: {
               intent: {
                 type: 'string',
@@ -86,17 +120,21 @@ export class OpenAIService {
                   'expense_total',
                   'cash_flow',
                   'biggest_expenses',
+                  'biggest_individual_purchases',
                   'monthly_totals',
+                  'average_monthly_spending',
                   'unknown',
                 ],
               },
-              category: { type: 'string' },
-              merchant: { type: 'string' },
+              category: { type: ['string', 'null'] },
+              merchant: { type: ['string', 'null'] },
               dateRange: {
                 type: 'string',
                 enum: [
                   'this_month',
                   'last_month',
+                  'last_3_months',
+                  'last_6_months',
                   'this_year',
                   'last_year',
                   'year_to_date',
@@ -104,13 +142,17 @@ export class OpenAIService {
                   'custom',
                 ],
               },
-              startDate: { type: 'string' },
-              endDate: { type: 'string' },
-              limit: { type: 'integer' },
+              startDate: { type: ['string', 'null'] },
+              endDate: { type: ['string', 'null'] },
+              limit: { type: ['integer', 'null'] },
             },
           },
         },
       },
+    });
+
+    this.options.logger?.info('Extracted OpenAI bookkeeping intent.', {
+      durationMs: Date.now() - startedAt,
     });
 
     return structuredIntentSchema.parse(JSON.parse(response.output_text));
@@ -118,6 +160,7 @@ export class OpenAIService {
 
   /** Turns completed deterministic results into a friendly conversational reply. */
   async generateResponse(input: ResponseGenerationInput): Promise<string> {
+    const startedAt = Date.now();
     const response = await this.client.responses.create({
       model: this.options.model,
       input: [
@@ -130,6 +173,34 @@ export class OpenAIService {
           content: JSON.stringify(input),
         },
       ],
+    });
+
+    this.options.logger?.info('Generated OpenAI bookkeeping response.', {
+      durationMs: Date.now() - startedAt,
+    });
+
+    return response.output_text;
+  }
+
+  /** Generates a safe pre-bookkeeping reply without inventing financial facts. */
+  async generateSmartReply(question: string): Promise<string> {
+    const startedAt = Date.now();
+    const response = await this.client.responses.create({
+      model: this.options.model,
+      input: [
+        {
+          role: 'system',
+          content: smartReplySystemPrompt,
+        },
+        {
+          role: 'user',
+          content: question,
+        },
+      ],
+    });
+
+    this.options.logger?.info('Generated OpenAI smart reply.', {
+      durationMs: Date.now() - startedAt,
     });
 
     return response.output_text;

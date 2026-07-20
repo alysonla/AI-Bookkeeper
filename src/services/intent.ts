@@ -6,6 +6,7 @@ import type { CalculatorService } from './calculator.js';
 export interface IntentProcessorResult {
   result: unknown;
   transactionCount: number;
+  transactions: Transaction[];
 }
 
 export class IntentService {
@@ -21,8 +22,11 @@ export class IntentService {
     const scopedTransactions = transactions.filter((transaction) =>
       isWithinDateRange(transaction.date, dateRange),
     );
+    const nonTransferTransactions = scopedTransactions.filter(
+      (transaction) => !isTransfer(transaction),
+    );
 
-    const filteredTransactions = this.filterByIntent(intent, scopedTransactions);
+    const filteredTransactions = this.filterByIntent(intent, nonTransferTransactions);
 
     switch (intent.intent) {
       case 'sum_category':
@@ -32,30 +36,65 @@ export class IntentService {
         return {
           result: this.calculator.sum(filteredTransactions),
           transactionCount: filteredTransactions.length,
+          transactions: filteredTransactions,
         };
       case 'cash_flow':
         return {
           result: this.calculator.cashFlow(filteredTransactions),
           transactionCount: filteredTransactions.length,
+          transactions: filteredTransactions,
         };
       case 'biggest_expenses':
         return {
           result: this.calculator
-            .groupByMerchant(filteredTransactions.filter((transaction) => transaction.amount < 0))
+            .groupByMerchantAndCategory(
+              filteredTransactions.filter((transaction) => transaction.amount < 0),
+            )
             .slice(0, intent.limit ?? 5),
           transactionCount: filteredTransactions.length,
+          transactions: filteredTransactions,
         };
+      case 'biggest_individual_purchases': {
+        const expenseTransactions = filteredTransactions.filter(
+          (transaction) => transaction.amount < 0,
+        );
+
+        return {
+          result: this.calculator.biggestIndividualPurchases(
+            expenseTransactions,
+            intent.limit ?? 5,
+          ),
+          transactionCount: expenseTransactions.length,
+          transactions: expenseTransactions,
+        };
+      }
       case 'monthly_totals':
         return {
           result: this.calculator.monthlyTotals(filteredTransactions),
           transactionCount: filteredTransactions.length,
+          transactions: filteredTransactions,
         };
+      case 'average_monthly_spending': {
+        const expenseTransactions = filteredTransactions.filter(
+          (transaction) => transaction.amount < 0,
+        );
+
+        return {
+          result: {
+            ...this.calculator.averageMonthlySpending(expenseTransactions),
+            excludedCategories: ['transfer', 'transfers'],
+          },
+          transactionCount: expenseTransactions.length,
+          transactions: expenseTransactions,
+        };
+      }
       case 'unknown':
         return {
           result: {
             message: 'I could not determine which bookkeeping calculation to run.',
           },
           transactionCount: 0,
+          transactions: [],
         };
     }
   }
@@ -83,4 +122,9 @@ export class IntentService {
 
     return transactions;
   }
+}
+
+function isTransfer(transaction: Transaction): boolean {
+  const category = transaction.category.trim().toLowerCase();
+  return category === 'transfer' || category === 'transfers';
 }

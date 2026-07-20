@@ -6,6 +6,10 @@ export interface MerchantTotal {
   count: number;
 }
 
+export interface MerchantCategoryTotal extends MerchantTotal {
+  category: string;
+}
+
 export interface CategoryTotal {
   category: string;
   total: number;
@@ -17,6 +21,24 @@ export interface MonthlyTotal {
   income: number;
   expenses: number;
   cashFlow: number;
+}
+
+export interface AverageMonthlySpending {
+  averageMonthlySpending: number;
+  totalSpending: number;
+  monthCount: number;
+  monthlyExpenses: Array<{
+    month: string;
+    expenses: number;
+  }>;
+}
+
+export interface IndividualPurchase {
+  date: Date;
+  merchant: string;
+  category: string;
+  amount: number;
+  account?: string;
 }
 
 export class CalculatorService {
@@ -72,6 +94,27 @@ export class CalculatorService {
     return [...totals.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }
 
+  /** Groups spending or income by merchant and category. */
+  groupByMerchantAndCategory(transactions: Transaction[]): MerchantCategoryTotal[] {
+    const totals = new Map<string, MerchantCategoryTotal>();
+
+    for (const transaction of transactions) {
+      const key = `${transaction.merchant.toLowerCase()}::${transaction.category.toLowerCase()}`;
+      const current = totals.get(key) ?? {
+        merchant: transaction.merchant,
+        category: transaction.category,
+        total: 0,
+        count: 0,
+      };
+
+      current.total = roundMoney(current.total + transaction.amount);
+      current.count += 1;
+      totals.set(key, current);
+    }
+
+    return [...totals.values()].sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+  }
+
   /** Groups spending or income by bookkeeping category. */
   groupByCategory(transactions: Transaction[]): CategoryTotal[] {
     const totals = new Map<string, CategoryTotal>();
@@ -115,6 +158,42 @@ export class CalculatorService {
     }
 
     return [...totals.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  /** Calculates average monthly spending from expense transactions. */
+  averageMonthlySpending(transactions: Transaction[]): AverageMonthlySpending {
+    const monthlyExpenses = this.monthlyTotals(transactions)
+      .filter((total) => total.expenses > 0)
+      .map((total) => ({
+        month: total.month,
+        expenses: total.expenses,
+      }));
+    const totalSpending = roundMoney(
+      monthlyExpenses.reduce((total, monthlyTotal) => total + monthlyTotal.expenses, 0),
+    );
+    const monthCount = monthlyExpenses.length;
+
+    return {
+      averageMonthlySpending: monthCount === 0 ? 0 : roundMoney(totalSpending / monthCount),
+      totalSpending,
+      monthCount,
+      monthlyExpenses,
+    };
+  }
+
+  /** Returns the largest individual expense transactions. */
+  biggestIndividualPurchases(transactions: Transaction[], limit = 5): IndividualPurchase[] {
+    return transactions
+      .filter((transaction) => transaction.amount < 0)
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+      .slice(0, limit)
+      .map((transaction) => ({
+        date: transaction.date,
+        merchant: transaction.merchant,
+        category: transaction.category,
+        amount: transaction.amount,
+        ...(transaction.account ? { account: transaction.account } : {}),
+      }));
   }
 }
 

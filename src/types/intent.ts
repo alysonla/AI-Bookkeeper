@@ -5,11 +5,21 @@ export type IntentName =
   | 'expense_total'
   | 'cash_flow'
   | 'biggest_expenses'
+  | 'biggest_individual_purchases'
   | 'monthly_totals'
+  | 'average_monthly_spending'
   | 'unknown';
 
 export type DateRangePreset =
-  'this_month' | 'last_month' | 'this_year' | 'last_year' | 'year_to_date' | 'all_time' | 'custom';
+  | 'this_month'
+  | 'last_month'
+  | 'last_3_months'
+  | 'last_6_months'
+  | 'this_year'
+  | 'last_year'
+  | 'year_to_date'
+  | 'all_time'
+  | 'custom';
 
 export interface StructuredIntent {
   intent: IntentName;

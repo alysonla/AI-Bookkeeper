@@ -47,6 +47,16 @@ The Google Sheets service maps rows into normalized `Transaction` objects. Calcu
 
 See `.env.example` for required configuration.
 
+For local Google Sheets access, the simplest setup is to use the downloaded service account JSON key file:
+
+```bash
+GOOGLE_SHEETS_SPREADSHEET_ID=1ezJjFYxtEu-6wJo0Pln_YtJ8Dq0lsqDwO3qp9ljXbaE
+GOOGLE_SHEETS_RANGE=Transactions!A:M
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=/absolute/path/to/service-account-key.json
+```
+
+Then share the Google Sheet with the service account `client_email` as a Viewer. You can also configure `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` directly, but the key-file path avoids multiline `.env` formatting issues.
+
 ## WhatsApp Local Setup
 
 Meta requires a public HTTPS callback URL for webhook verification. For local development, run Penny locally and expose it with an HTTPS tunnel such as ngrok or Cloudflare Tunnel.
@@ -60,6 +70,7 @@ Meta requires a public HTTPS callback URL for webhook verification. For local de
 
    ```bash
    WHATSAPP_SMOKE_TEST=true
+   WHATSAPP_SMART_REPLIES=false
    ```
 
 7. Start Penny:
@@ -88,6 +99,17 @@ Penny received: <incoming message>
 ```
 
 This confirms webhook verification, inbound message parsing, and outbound WhatsApp replies without calling OpenAI or Google Sheets. Disable smoke-test mode to run the full bookkeeping flow.
+
+To try OpenAI-powered replies before Google Sheets is connected, use smart-reply mode:
+
+```bash
+WHATSAPP_SMOKE_TEST=false
+WHATSAPP_SMART_REPLIES=true
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-5.1
+```
+
+In smart-reply mode, Penny answers conversationally but will not invent financial details. If a user asks a bookkeeping question, Penny explains that spreadsheet data is not connected yet.
 
 ## Architecture
 

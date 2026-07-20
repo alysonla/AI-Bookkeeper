@@ -4,6 +4,7 @@ import { createVerifyRouter } from './api/verify.js';
 import { createWebhookRouter } from './api/webhook.js';
 import { loadConfig } from './config.js';
 import { CalculatorService } from './services/calculator.js';
+import { ConversationService } from './services/conversation.js';
 import { IntentService } from './services/intent.js';
 import { OpenAIService } from './services/openai.js';
 import { SheetsService } from './services/sheets.js';
@@ -14,9 +15,16 @@ const config = loadConfig();
 const logger = createLogger(config.logLevel);
 
 const calculatorService = new CalculatorService();
+const conversationService = new ConversationService();
 const intentService = new IntentService(calculatorService);
-const openAIService = new OpenAIService(config.openai);
-const sheetsService = new SheetsService(config.googleSheets);
+const openAIService = new OpenAIService({
+  ...config.openai,
+  logger,
+});
+const sheetsService = new SheetsService({
+  ...config.googleSheets,
+  logger,
+});
 const whatsappService = new WhatsAppService({
   ...config.meta,
   logger,
@@ -33,8 +41,10 @@ app.use(
     openAIService,
     sheetsService,
     intentService,
+    conversationService,
     logger,
     whatsappSmokeTest: config.features.whatsappSmokeTest,
+    whatsappSmartReplies: config.features.whatsappSmartReplies,
   }),
 );
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { ConversationService } from '../services/conversation.js';
 import type { IntentService } from '../services/intent.js';
 import type { OpenAIService } from '../services/openai.js';
 import type { SheetsService } from '../services/sheets.js';
@@ -11,8 +12,10 @@ export interface WebhookRouterDependencies {
   openAIService: OpenAIService;
   sheetsService: SheetsService;
   intentService: IntentService;
+  conversationService?: ConversationService;
   logger: Logger;
   whatsappSmokeTest: boolean;
+  whatsappSmartReplies: boolean;
 }
 
 export function createWebhookRouter(dependencies: WebhookRouterDependencies): Router {
@@ -46,6 +49,8 @@ export async function processWebhookPayload(
 
   await Promise.all(
     messages.map(async (message) => {
+      const startedAt = Date.now();
+
       try {
         if (dependencies.whatsappSmokeTest) {
           dependencies.logger.info('Processing WhatsApp smoke-test message.', {
@@ -58,9 +63,40 @@ export async function processWebhookPayload(
           return;
         }
 
+        if (dependencies.whatsappSmartReplies) {
+          dependencies.logger.info('Processing WhatsApp smart-reply message.', {
+            messageId: message.id,
+          });
+          const reply = await dependencies.openAIService.generateSmartReply(message.text);
+          await dependencies.whatsappService.sendReply(message.from, reply);
+          return;
+        }
+
+        if (
+          dependencies.conversationService?.isBreakdownRequest(message.text) &&
+          dependencies.conversationService.getBreakdownContext(message.from)
+        ) {
+          dependencies.logger.info('Processing WhatsApp breakdown follow-up message.', {
+            messageId: message.id,
+          });
+          const context = dependencies.conversationService.getBreakdownContext(message.from);
+          const reply = dependencies.conversationService.formatBreakdown(
+            context?.transactions ?? [],
+            {
+              includeCategory: dependencies.conversationService.shouldIncludeCategory(message.text),
+            },
+          );
+          await dependencies.whatsappService.sendReply(message.from, reply);
+          return;
+        }
+
         const intent = await dependencies.openAIService.extractIntent(message.text);
         const transactions = await dependencies.sheetsService.listTransactions();
         const calculation = dependencies.intentService.processIntent(intent, transactions);
+        dependencies.conversationService?.saveBreakdownContext(
+          message.from,
+          calculation.transactions,
+        );
         const reply = await dependencies.openAIService.generateResponse({
           question: message.text,
           result: calculation.result,
@@ -68,6 +104,10 @@ export async function processWebhookPayload(
         });
 
         await dependencies.whatsappService.sendReply(message.from, reply);
+        dependencies.logger.info('Processed WhatsApp bookkeeping message.', {
+          messageId: message.id,
+          durationMs: Date.now() - startedAt,
+        });
       } catch (error) {
         dependencies.logger.error('Failed to process incoming WhatsApp message.', {
           messageId: message.id,

@@ -3,6 +3,8 @@ import type { AppConfig } from './types/config.js';
 
 export function loadConfig(): AppConfig {
   const whatsappSmokeTest = readBoolean('WHATSAPP_SMOKE_TEST', false);
+  const whatsappSmartReplies = readBoolean('WHATSAPP_SMART_REPLIES', false);
+  const needsBookkeepingData = !whatsappSmokeTest && !whatsappSmartReplies;
 
   return {
     port: readNumber('PORT', 3000),
@@ -15,37 +17,55 @@ export function loadConfig(): AppConfig {
     },
     features: {
       whatsappSmokeTest,
+      whatsappSmartReplies,
     },
     openai: {
       apiKey: readString('OPENAI_API_KEY', whatsappSmokeTest ? 'unused-in-smoke-test' : undefined),
-      model: readString('OPENAI_MODEL', 'gpt-4.1-mini'),
+      model: readString('OPENAI_MODEL', 'gpt-5.1'),
     },
     googleSheets: {
       spreadsheetId: readString(
         'GOOGLE_SHEETS_SPREADSHEET_ID',
-        whatsappSmokeTest ? 'unused-in-smoke-test' : undefined,
+        needsBookkeepingData ? undefined : 'unused-in-non-bookkeeping-mode',
       ),
       range: readString('GOOGLE_SHEETS_RANGE', 'Transactions!A:E'),
+      cacheTtlMs: readNumber('GOOGLE_SHEETS_CACHE_TTL_MS', 60000),
+      keyFile: readOptionalString('GOOGLE_SERVICE_ACCOUNT_KEY_FILE'),
       serviceAccountEmail: readString(
         'GOOGLE_SERVICE_ACCOUNT_EMAIL',
-        whatsappSmokeTest ? 'unused-in-smoke-test' : undefined,
+        needsBookkeepingData && !readOptionalString('GOOGLE_SERVICE_ACCOUNT_KEY_FILE')
+          ? undefined
+          : 'unused-in-non-bookkeeping-mode',
       ),
       privateKey: readString(
         'GOOGLE_PRIVATE_KEY',
-        whatsappSmokeTest ? 'unused-in-smoke-test' : undefined,
+        needsBookkeepingData && !readOptionalString('GOOGLE_SERVICE_ACCOUNT_KEY_FILE')
+          ? undefined
+          : 'unused-in-non-bookkeeping-mode',
       ).replace(/\\n/g, '\n'),
     },
   };
 }
 
 function readString(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
+  const rawValue = process.env[name];
+  const value = rawValue && rawValue.trim().length > 0 ? rawValue : fallback;
 
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
 
   return value;
+}
+
+function readOptionalString(name: string): string | undefined {
+  const value = process.env[name];
+
+  if (!value || value.trim().length === 0) {
+    return undefined;
+  }
+
+  return value.trim();
 }
 
 function readNumber(name: string, fallback: number): number {

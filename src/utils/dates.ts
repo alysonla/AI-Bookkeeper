@@ -19,6 +19,10 @@ export function resolveDateRange(
       return { start: startOfMonth(year, month), end: endOfMonth(year, month) };
     case 'last_month':
       return { start: startOfMonth(year, month - 1), end: endOfMonth(year, month - 1) };
+    case 'last_3_months':
+      return { start: startOfMonth(year, month - 3), end: endOfMonth(year, month - 1) };
+    case 'last_6_months':
+      return { start: startOfMonth(year, month - 6), end: endOfMonth(year, month - 1) };
     case 'this_year':
     case 'year_to_date':
       return { start: new Date(year, 0, 1), end: endOfDay(now) };

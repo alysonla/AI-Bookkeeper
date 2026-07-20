@@ -6,7 +6,12 @@ import { IntentService } from '../src/services/intent.js';
 const transactions: Transaction[] = [
   { date: new Date('2026-06-05'), merchant: 'Costco', category: 'Groceries', amount: -120 },
   { date: new Date('2026-06-10'), merchant: 'Whole Foods', category: 'Groceries', amount: -80 },
+  { date: new Date('2026-05-10'), merchant: 'Cafe', category: 'Dining', amount: -60 },
+  { date: new Date('2026-06-11'), merchant: 'Target', category: 'Kids', amount: -30 },
+  { date: new Date('2026-06-12'), merchant: 'Target', category: 'Home', amount: -20 },
+  { date: new Date('2026-06-13'), merchant: 'Vet', category: 'Milo', amount: -500 },
   { date: new Date('2026-07-01'), merchant: 'Client A', category: 'Income', amount: 1000 },
+  { date: new Date('2026-07-02'), merchant: 'Bank Transfer', category: 'Transfer', amount: -5000 },
 ];
 
 describe('IntentService', () => {
@@ -23,9 +28,97 @@ describe('IntentService', () => {
       new Date('2026-07-19'),
     );
 
-    expect(result).toEqual({
-      result: -200,
-      transactionCount: 2,
+    expect(result.result).toBe(-200);
+    expect(result.transactionCount).toBe(2);
+    expect(result.transactions).toHaveLength(2);
+  });
+
+  it('excludes transfers from average monthly spending', () => {
+    const result = service.processIntent(
+      {
+        intent: 'average_monthly_spending',
+        dateRange: 'last_6_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual({
+      averageMonthlySpending: 405,
+      totalSpending: 810,
+      monthCount: 2,
+      monthlyExpenses: [
+        { month: '2026-05', expenses: 60 },
+        { month: '2026-06', expenses: 750 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
     });
+    expect(result.transactionCount).toBe(6);
+  });
+
+  it('supports average monthly spending over the last three completed months', () => {
+    const result = service.processIntent(
+      {
+        intent: 'average_monthly_spending',
+        dateRange: 'last_3_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual({
+      averageMonthlySpending: 405,
+      totalSpending: 810,
+      monthCount: 2,
+      monthlyExpenses: [
+        { month: '2026-05', expenses: 60 },
+        { month: '2026-06', expenses: 750 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+  });
+
+  it('includes categories in biggest expense results', () => {
+    const result = service.processIntent(
+      {
+        intent: 'biggest_expenses',
+        dateRange: 'last_month',
+        limit: 2,
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual([
+      { merchant: 'Vet', category: 'Milo', total: -500, count: 1 },
+      { merchant: 'Costco', category: 'Groceries', total: -120, count: 1 },
+    ]);
+  });
+
+  it('returns transaction-level results for biggest individual purchases', () => {
+    const result = service.processIntent(
+      {
+        intent: 'biggest_individual_purchases',
+        dateRange: 'last_month',
+        limit: 2,
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual([
+      {
+        date: new Date('2026-06-13'),
+        merchant: 'Vet',
+        category: 'Milo',
+        amount: -500,
+      },
+      {
+        date: new Date('2026-06-05'),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+    ]);
   });
 });
