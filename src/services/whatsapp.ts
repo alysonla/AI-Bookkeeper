@@ -12,9 +12,11 @@ export interface WhatsAppServiceOptions {
 
 export class WhatsAppService {
   private readonly fetchClient: typeof fetch;
+  private readonly messagesUrl: string;
 
   constructor(private readonly options: WhatsAppServiceOptions) {
     this.fetchClient = options.fetchClient ?? fetch;
+    this.messagesUrl = `https://graph.facebook.com/v20.0/${this.options.phoneNumberId}/messages`;
   }
 
   /** Verifies Meta webhook subscription requests. */
@@ -54,13 +56,41 @@ export class WhatsAppService {
     return messages;
   }
 
+  /** Marks an inbound message as read and asks WhatsApp to show the typing indicator. */
+  async showTypingIndicator(messageId: string): Promise<void> {
+    const response = await this.fetchClient(this.messagesUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.options.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+        typing_indicator: {
+          type: 'text',
+        },
+      }),
+    });
+
+    if (response.ok) {
+      return;
+    }
+
+    const errorBody = await response.text();
+
+    throw new Error(
+      `Failed to show WhatsApp typing indicator. Status: ${response.status}. ${errorBody}`,
+    );
+  }
+
   /** Sends a WhatsApp text reply through the Meta WhatsApp Cloud API. */
   async sendReply(to: string, message: string): Promise<void> {
-    const url = `https://graph.facebook.com/v20.0/${this.options.phoneNumberId}/messages`;
     const maxAttempts = 3;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const response = await this.fetchClient(url, {
+      const response = await this.fetchClient(this.messagesUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.options.accessToken}`,

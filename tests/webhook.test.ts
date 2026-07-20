@@ -110,6 +110,55 @@ describe('processWebhookPayload', () => {
     expect(listTransactions).not.toHaveBeenCalled();
   });
 
+  it('continues processing when the WhatsApp typing indicator fails', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const showTypingIndicator = vi
+      .fn<WhatsAppService['showTypingIndicator']>()
+      .mockRejectedValue(new Error('typing failed'));
+    const generateSmartReply = vi
+      .fn<OpenAIService['generateSmartReply']>()
+      .mockResolvedValue('Still here.');
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-typing-fails',
+          timestamp: '1770000001',
+          text: 'hello',
+        },
+      ]),
+      sendReply,
+      showTypingIndicator,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent: vi.fn<OpenAIService['extractIntent']>(),
+          generateResponse: vi.fn<OpenAIService['generateResponse']>(),
+          generateSmartReply,
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions: vi.fn<SheetsService['listTransactions']>(),
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: true,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(showTypingIndicator).toHaveBeenCalledWith('wamid-typing-fails');
+    expect(logger.warn).toHaveBeenCalledWith('Failed to show WhatsApp typing indicator.', {
+      messageId: 'wamid-typing-fails',
+      error: 'typing failed',
+    });
+    expect(sendReply).toHaveBeenCalledWith('15551234567', 'Still here.');
+  });
+
   it('uses the last calculation context for yes-style breakdown follow-ups', async () => {
     const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
     const extractIntent = vi.fn<OpenAIService['extractIntent']>();
