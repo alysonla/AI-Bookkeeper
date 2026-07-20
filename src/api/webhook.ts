@@ -177,6 +177,10 @@ async function tryProcessCalculationPlan(
     return undefined;
   }
 
+  if (shouldReadSheetsForStandaloneQuestion(messageText)) {
+    return undefined;
+  }
+
   const context = dependencies.conversationService.getContext(userId);
   const availableTransactions = context ? (context.sourceTransactions ?? context.transactions) : [];
 
@@ -214,6 +218,38 @@ async function tryProcessCalculationPlan(
 
 function shouldSaveCalculationContext(intent: string, transactionCount: number): boolean {
   return intent !== 'unknown' || transactionCount > 0;
+}
+
+function shouldReadSheetsForStandaloneQuestion(messageText: string): boolean {
+  const normalizedText = messageText.toLowerCase();
+
+  if (isContextDependentQuestion(normalizedText)) {
+    return false;
+  }
+
+  return (
+    hasDatePeriod(normalizedText) &&
+    isTotalQuestion(normalizedText) &&
+    /\b[a-z][a-z\s/&'-]*\s+transactions?\b/.test(normalizedText)
+  );
+}
+
+function isContextDependentQuestion(normalizedText: string): boolean {
+  return (
+    isExclusionQuestion(normalizedText) ||
+    /^\s*(?:thanks?|thank you|ok|okay|yeah|yes)\b/.test(normalizedText) ||
+    /\b(?:those|these|them|that|it|same|previous|above|breakdown)\b/.test(normalizedText)
+  );
+}
+
+function hasDatePeriod(normalizedText: string): boolean {
+  return (
+    /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/.test(
+      normalizedText,
+    ) ||
+    /\b(?:last|past|this)\s+(?:month|year|\d+\s+months?)\b/.test(normalizedText) ||
+    /\b(?:year\s+to\s+date|so\s+far\s+this\s+year)\b/.test(normalizedText)
+  );
 }
 
 function createDeterministicFollowUpPlan(

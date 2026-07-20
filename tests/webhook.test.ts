@@ -715,7 +715,7 @@ describe('processWebhookPayload', () => {
     expect(listTransactions).not.toHaveBeenCalled();
   });
 
-  it('routes total-for-category transaction wording to a sum instead of a list', async () => {
+  it('routes context-only total-for-category transaction wording to a sum instead of a list', async () => {
     const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
     const extractIntent = vi.fn<OpenAIService['extractIntent']>();
     const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
@@ -771,7 +771,7 @@ describe('processWebhookPayload', () => {
           from: '15551234567',
           id: 'wamid-10',
           timestamp: '1770000009',
-          text: 'whats the total for health transactions in June?',
+          text: 'whats the total for health transactions?',
         },
       ]),
       sendReply,
@@ -800,18 +800,162 @@ describe('processWebhookPayload', () => {
     );
 
     expect(generateResponse).toHaveBeenCalledWith({
-      question: 'whats the total for health transactions in June?',
+      question: 'whats the total for health transactions?',
       result: {
-        totalSpending: 100,
-        signedTotal: -100,
+        totalSpending: 140,
+        signedTotal: -140,
         excludedCategories: ['transfer', 'transfers'],
       },
-      transactionCount: 2,
+      transactionCount: 3,
     });
     expect(sendReply).toHaveBeenCalledWith('15551234567', 'June Health spending was $100.');
     expect(extractCalculationPlan).not.toHaveBeenCalled();
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
+  });
+
+  it('reads Sheets for standalone category totals with a date even when context is stale', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+      intent: 'unknown',
+      dateRange: 'all_time',
+    });
+    const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>().mockResolvedValue([
+      {
+        date: new Date(2026, 5, 4),
+        merchant: 'Rupa Labs',
+        category: 'Health',
+        amount: -75,
+      },
+      {
+        date: new Date(2026, 5, 10),
+        merchant: 'Prime IV',
+        category: 'Health',
+        amount: -25,
+      },
+      {
+        date: new Date(2026, 5, 12),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+    ]);
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('June Health spending was $100.');
+    const staleContext = {
+      transactions: [
+        {
+          date: new Date(2026, 5, 12),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 1,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(staleContext),
+      summarizeContext: vi.fn(),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-11',
+          timestamp: '1770000010',
+          text: 'whats the total for health transactions in June?',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: new IntentService(new CalculatorService()),
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: new PlanExecutorService(new CalculatorService()),
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    const expectedResult = {
+      operation: 'category_sum',
+      totalSpending: 100,
+      signedTotal: -100,
+      includedCategories: ['Health'],
+      categories: [{ category: 'Health', total: -100, count: 2 }],
+      excludedCategories: ['transfer', 'transfers'],
+    };
+
+    expect(extractCalculationPlan).not.toHaveBeenCalled();
+    expect(listTransactions).toHaveBeenCalledOnce();
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'whats the total for health transactions in June?',
+      result: expectedResult,
+      transactionCount: 2,
+    });
+    expect(conversationService.saveCalculationContext).toHaveBeenCalledWith('15551234567', {
+      question: 'whats the total for health transactions in June?',
+      result: expectedResult,
+      transactionCount: 2,
+      transactions: [
+        {
+          date: new Date(2026, 5, 4),
+          merchant: 'Rupa Labs',
+          category: 'Health',
+          amount: -75,
+        },
+        {
+          date: new Date(2026, 5, 10),
+          merchant: 'Prime IV',
+          category: 'Health',
+          amount: -25,
+        },
+      ],
+      sourceTransactions: [
+        {
+          date: new Date(2026, 5, 4),
+          merchant: 'Rupa Labs',
+          category: 'Health',
+          amount: -75,
+        },
+        {
+          date: new Date(2026, 5, 10),
+          merchant: 'Prime IV',
+          category: 'Health',
+          amount: -25,
+        },
+        {
+          date: new Date(2026, 5, 12),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+      ],
+    });
+    expect(sendReply).toHaveBeenCalledWith('15551234567', 'June Health spending was $100.');
   });
 
   it('recalculates a prior category total after excluding named merchants', async () => {
