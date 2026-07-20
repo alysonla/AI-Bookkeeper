@@ -5,25 +5,25 @@ import { PlanExecutorService } from '../src/services/planExecutor.js';
 
 const transactions = [
   {
-    date: new Date('2026-01-02'),
+    date: new Date(2026, 0, 2),
     merchant: 'Costco',
     category: 'Groceries',
     amount: -120,
   },
   {
-    date: new Date('2026-01-05'),
+    date: new Date(2026, 0, 5),
     merchant: 'Target',
     category: 'Groceries',
     amount: -80,
   },
   {
-    date: new Date('2026-01-08'),
+    date: new Date(2026, 0, 8),
     merchant: 'Payroll',
     category: 'Income',
     amount: 5000,
   },
   {
-    date: new Date('2026-01-10'),
+    date: new Date(2026, 0, 10),
     merchant: 'Withdrawal Transfer to *4748',
     category: 'Transfer',
     amount: -500,
@@ -192,23 +192,93 @@ describe('PlanExecutorService', () => {
     ]);
   });
 
+  it('filters previous transactions to the month named in a category follow-up', () => {
+    const context: ConversationContext = {
+      transactions: [
+        {
+          date: new Date(2026, 0, 5),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 2, 1),
+          merchant: 'Vet',
+          category: 'Milo',
+          amount: -3624.55,
+        },
+        {
+          date: new Date(2026, 2, 15),
+          merchant: 'Hardware Store',
+          category: 'Home Maintenance',
+          amount: -1440.01,
+        },
+        {
+          date: new Date(2026, 2, 18),
+          merchant: 'Doctor',
+          category: 'Health',
+          amount: -1337.82,
+        },
+        {
+          date: new Date(2026, 3, 2),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -75,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 665,
+      lastResult: {
+        averageMonthlySpending: 8191.62,
+        totalSpending: 49149.74,
+        monthCount: 6,
+        monthlyExpenses: [
+          { month: '2026-01', expenses: 7747.55 },
+          { month: '2026-02', expenses: 5289.81 },
+          { month: '2026-03', expenses: 14220.5 },
+          { month: '2026-04', expenses: 7866.1 },
+          { month: '2026-05', expenses: 7857.12 },
+          { month: '2026-06', expenses: 6168.66 },
+        ],
+      },
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'group_by',
+        metric: 'expenses',
+        groupBy: 'category',
+      },
+      context,
+      'what happened in March? can you list out each of the categories',
+    );
+
+    expect(result?.transactionCount).toBe(3);
+    expect(result?.result).toEqual([
+      { category: 'Milo', total: -3624.55, count: 1 },
+      { category: 'Home Maintenance', total: -1440.01, count: 1 },
+      { category: 'Health', total: -1337.82, count: 1 },
+    ]);
+  });
+
   it('groups previous compared categories by month and category', () => {
     const context: ConversationContext = {
       transactions: [
         {
-          date: new Date('2026-01-05'),
+          date: new Date(2026, 0, 5),
           merchant: 'Costco',
           category: 'Groceries',
           amount: -100,
         },
         {
-          date: new Date('2026-01-10'),
+          date: new Date(2026, 0, 10),
           merchant: 'Cafe',
           category: 'Eating Out',
           amount: -40,
         },
         {
-          date: new Date('2026-02-05'),
+          date: new Date(2026, 1, 5),
           merchant: 'Costco',
           category: 'Groceries',
           amount: -80,

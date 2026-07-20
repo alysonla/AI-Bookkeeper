@@ -5,6 +5,7 @@ import type { OpenAIService } from '../services/openai.js';
 import type { PlanExecutorService } from '../services/planExecutor.js';
 import type { SheetsService } from '../services/sheets.js';
 import type { WhatsAppService } from '../services/whatsapp.js';
+import type { CalculationPlan } from '../types/calculationPlan.js';
 import type { WhatsAppWebhookPayload } from '../types/whatsapp.js';
 import type { Logger } from '../utils/logger.js';
 
@@ -178,11 +179,13 @@ async function tryProcessCalculationPlan(
   }
 
   try {
-    const plan = await dependencies.openAIService.extractCalculationPlan(
-      messageText,
-      dependencies.conversationService.summarizeContext(context),
-    );
-    const result = dependencies.planExecutorService.execute(plan, context);
+    const plan =
+      createDeterministicFollowUpPlan(messageText) ??
+      (await dependencies.openAIService.extractCalculationPlan(
+        messageText,
+        dependencies.conversationService.summarizeContext(context),
+      ));
+    const result = dependencies.planExecutorService.execute(plan, context, messageText);
 
     if (!result) {
       return undefined;
@@ -201,6 +204,21 @@ async function tryProcessCalculationPlan(
 
     return undefined;
   }
+}
+
+function createDeterministicFollowUpPlan(messageText: string): CalculationPlan | undefined {
+  const normalizedText = messageText.toLowerCase();
+
+  if (!/\bcategor(?:y|ies)\b/.test(normalizedText)) {
+    return undefined;
+  }
+
+  return {
+    source: 'previous_transactions',
+    operation: 'group_by',
+    groupBy: 'category',
+    metric: 'expenses',
+  };
 }
 
 async function sendReplySafely(

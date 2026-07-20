@@ -1,6 +1,7 @@
 import type { Transaction } from '../models/transaction.js';
 import type { CalculationPlan } from '../types/calculationPlan.js';
 import { matchesCategory, normalizeCategory } from '../utils/categories.js';
+import { isWithinDateRange, resolveDateRange } from '../utils/dates.js';
 import type { ConversationContext } from './conversation.js';
 import type { CalculatorService } from './calculator.js';
 
@@ -13,7 +14,11 @@ export interface PlanExecutionResult {
 export class PlanExecutorService {
   constructor(private readonly calculator: CalculatorService) {}
 
-  execute(plan: CalculationPlan, context: ConversationContext): PlanExecutionResult | undefined {
+  execute(
+    plan: CalculationPlan,
+    context: ConversationContext,
+    sourceText?: string,
+  ): PlanExecutionResult | undefined {
     if (plan.operation === 'unknown') {
       return undefined;
     }
@@ -23,7 +28,7 @@ export class PlanExecutorService {
     }
 
     if (plan.source === 'previous_transactions') {
-      return this.executePreviousTransactionsPlan(plan, context);
+      return this.executePreviousTransactionsPlan(plan, context, sourceText);
     }
 
     return undefined;
@@ -86,8 +91,9 @@ export class PlanExecutorService {
   private executePreviousTransactionsPlan(
     plan: CalculationPlan,
     context: ConversationContext,
+    sourceText?: string,
   ): PlanExecutionResult | undefined {
-    const transactions = applyFilters(context.transactions, plan);
+    const transactions = applyFilters(context.transactions, plan, context.createdAt, sourceText);
 
     switch (plan.operation) {
       case 'sum': {
@@ -196,14 +202,26 @@ export class PlanExecutorService {
   }
 }
 
-function applyFilters(transactions: Transaction[], plan: CalculationPlan): Transaction[] {
+function applyFilters(
+  transactions: Transaction[],
+  plan: CalculationPlan,
+  now: Date,
+  sourceText?: string,
+): Transaction[] {
   const excludeCategories = new Set(
     (plan.filters?.excludeCategories ?? ['transfer', 'transfers']).map((category) =>
       normalizeCategory(category),
     ),
   );
+  const textDateRange = sourceText
+    ? resolveDateRange('all_time', now, undefined, undefined, sourceText)
+    : undefined;
 
   return transactions.filter((transaction) => {
+    if (textDateRange && !isWithinDateRange(transaction.date, textDateRange)) {
+      return false;
+    }
+
     if (excludeCategories.has(normalizeCategory(transaction.category))) {
       return false;
     }

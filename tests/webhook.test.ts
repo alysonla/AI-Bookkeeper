@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { processWebhookPayload } from '../src/api/webhook.js';
+import { CalculatorService } from '../src/services/calculator.js';
 import type { ConversationService } from '../src/services/conversation.js';
 import type { IntentService } from '../src/services/intent.js';
 import type { OpenAIService } from '../src/services/openai.js';
-import type { PlanExecutorService } from '../src/services/planExecutor.js';
+import { PlanExecutorService } from '../src/services/planExecutor.js';
 import type { SheetsService } from '../src/services/sheets.js';
 import type { WhatsAppService } from '../src/services/whatsapp.js';
 import type { Logger } from '../src/utils/logger.js';
@@ -481,6 +482,119 @@ describe('processWebhookPayload', () => {
       '15551234567',
       'Yes, those categories were the main March drivers.',
     );
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
+
+  it('forces category follow-ups through March-scoped previous transactions', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('March categories are grouped correctly.');
+    const context = {
+      transactions: [
+        {
+          date: new Date(2026, 0, 1),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 2, 1),
+          merchant: 'Vet',
+          category: 'Milo',
+          amount: -3624.55,
+        },
+        {
+          date: new Date(2026, 2, 15),
+          merchant: 'Hardware Store',
+          category: 'Home Maintenance',
+          amount: -1440.01,
+        },
+        {
+          date: new Date(2026, 3, 1),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -75,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+      lastResult: {
+        averageMonthlySpending: 8191.62,
+        totalSpending: 49149.74,
+        monthCount: 6,
+        monthlyExpenses: [
+          { month: '2026-01', expenses: 7747.55 },
+          { month: '2026-02', expenses: 5289.81 },
+          { month: '2026-03', expenses: 14220.5 },
+          { month: '2026-04', expenses: 7866.1 },
+          { month: '2026-05', expenses: 7857.12 },
+          { month: '2026-06', expenses: 6168.66 },
+        ],
+      },
+      transactionCount: 665,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(true),
+      getBreakdownContext: vi.fn().mockReturnValue(context),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn(),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-7',
+          timestamp: '1770000006',
+          text: 'what happened in March? can you list out each of the categories',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: new PlanExecutorService(new CalculatorService()),
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'what happened in March? can you list out each of the categories',
+      result: [
+        { category: 'Milo', total: -3624.55, count: 1 },
+        { category: 'Home Maintenance', total: -1440.01, count: 1 },
+      ],
+      transactionCount: 2,
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'March categories are grouped correctly.',
+    );
+    expect(extractCalculationPlan).not.toHaveBeenCalled();
+    expect(conversationService.formatBreakdown).not.toHaveBeenCalled();
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
   });
