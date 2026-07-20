@@ -78,6 +78,29 @@ describe('IntentService', () => {
     });
   });
 
+  it('supports median monthly spending over the last six completed months', () => {
+    const result = service.processIntent(
+      {
+        intent: 'median_monthly_spending',
+        dateRange: 'last_6_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual({
+      medianMonthlySpending: 405,
+      totalSpending: 810,
+      monthCount: 2,
+      monthlyExpenses: [
+        { month: '2026-05', expenses: 60 },
+        { month: '2026-06', expenses: 750 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(6);
+  });
+
   it('includes categories in biggest expense results', () => {
     const result = service.processIntent(
       {

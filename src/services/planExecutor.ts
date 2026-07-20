@@ -32,6 +32,10 @@ export class PlanExecutorService {
     plan: CalculationPlan,
     context: ConversationContext,
   ): PlanExecutionResult | undefined {
+    if (plan.operation === 'median') {
+      return this.executePreviousMonthlyMedianPlan(context);
+    }
+
     if (
       (plan.operation !== 'average' && plan.operation !== 'derive_from_previous') ||
       typeof context.lastNumericResult !== 'number' ||
@@ -85,6 +89,20 @@ export class PlanExecutorService {
           transactionCount: transactions.length,
           transactions,
         };
+      case 'median': {
+        const metricTransactions = selectMetricTransactions(transactions, plan);
+        return {
+          result:
+            plan.metric === 'expenses'
+              ? {
+                  ...this.calculator.medianMonthlySpending(metricTransactions),
+                  excludedCategories: plan.filters?.excludeCategories ?? ['transfer', 'transfers'],
+                }
+              : this.calculator.medianMonthlySpending(metricTransactions),
+          transactionCount: metricTransactions.length,
+          transactions: metricTransactions,
+        };
+      }
       case 'group_by':
         return {
           result: this.groupTransactions(transactions, plan),
@@ -100,6 +118,40 @@ export class PlanExecutorService {
       default:
         return undefined;
     }
+  }
+
+  private executePreviousMonthlyMedianPlan(
+    context: ConversationContext,
+  ): PlanExecutionResult | undefined {
+    const monthlyExpenses = extractMonthlyExpenses(context.lastResult);
+
+    if (monthlyExpenses.length === 0) {
+      return undefined;
+    }
+
+    const sortedExpenses = monthlyExpenses
+      .map((monthlyTotal) => monthlyTotal.expenses)
+      .sort((a, b) => a - b);
+    const midpoint = Math.floor(sortedExpenses.length / 2);
+    const medianMonthlySpending =
+      sortedExpenses.length % 2 === 1
+        ? (sortedExpenses[midpoint] ?? 0)
+        : roundMoney(((sortedExpenses[midpoint - 1] ?? 0) + (sortedExpenses[midpoint] ?? 0)) / 2);
+    const totalSpending = roundMoney(
+      monthlyExpenses.reduce((total, monthlyTotal) => total + monthlyTotal.expenses, 0),
+    );
+
+    return {
+      result: {
+        medianMonthlySpending,
+        totalSpending,
+        monthCount: monthlyExpenses.length,
+        monthlyExpenses,
+        excludedCategories: ['transfer', 'transfers'],
+      },
+      transactionCount: context.transactionCount ?? context.transactions.length,
+      transactions: context.transactions,
+    };
   }
 
   private groupTransactions(transactions: Transaction[], plan: CalculationPlan): unknown {
@@ -167,4 +219,24 @@ function selectMetricTransactions(
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function extractMonthlyExpenses(result: unknown): Array<{ month: string; expenses: number }> {
+  if (!result || typeof result !== 'object') {
+    return [];
+  }
+
+  const monthlyExpenses = (result as Record<string, unknown>).monthlyExpenses;
+
+  if (!Array.isArray(monthlyExpenses)) {
+    return [];
+  }
+
+  return monthlyExpenses.filter(
+    (value): value is { month: string; expenses: number } =>
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as Record<string, unknown>).month === 'string' &&
+      typeof (value as Record<string, unknown>).expenses === 'number',
+  );
 }

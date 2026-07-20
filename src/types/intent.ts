@@ -8,6 +8,7 @@ export type IntentName =
   | 'biggest_individual_purchases'
   | 'monthly_totals'
   | 'average_monthly_spending'
+  | 'median_monthly_spending'
   | 'unknown';
 
 export type DateRangePreset =

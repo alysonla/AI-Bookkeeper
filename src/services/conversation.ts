@@ -152,6 +152,7 @@ function extractNumericResult(result: unknown): { lastNumericResult?: number } {
   const candidates = [
     record.totalSpending,
     record.averageMonthlySpending,
+    record.medianMonthlySpending,
     record.net,
     record.expenses,
     record.income,

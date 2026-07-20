@@ -125,14 +125,7 @@ Introduce a calculation plan abstraction:
 ```ts
 interface CalculationPlan {
   source: 'transactions' | 'previous_result' | 'previous_transactions';
-  operation:
-    | 'sum'
-    | 'average'
-    | 'count'
-    | 'top_n'
-    | 'group_by'
-    | 'list'
-    | 'derive_from_previous';
+  operation: 'sum' | 'average' | 'count' | 'top_n' | 'group_by' | 'list' | 'derive_from_previous';
   filters?: {
     category?: string;
     merchant?: string;

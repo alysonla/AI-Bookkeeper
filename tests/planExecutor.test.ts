@@ -62,6 +62,52 @@ describe('PlanExecutorService', () => {
     expect(result?.transactionCount).toBe(4);
   });
 
+  it('calculates median monthly spending from previous monthly result context', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 665,
+      lastResult: {
+        averageMonthlySpending: 8191.62,
+        totalSpending: 49149.74,
+        monthCount: 6,
+        monthlyExpenses: [
+          { month: '2026-01', expenses: 7747.55 },
+          { month: '2026-02', expenses: 5289.81 },
+          { month: '2026-03', expenses: 14220.5 },
+          { month: '2026-04', expenses: 7866.1 },
+          { month: '2026-05', expenses: 7857.12 },
+          { month: '2026-06', expenses: 6168.66 },
+        ],
+      },
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_result',
+        operation: 'median',
+        metric: 'expenses',
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual({
+      medianMonthlySpending: 7802.34,
+      totalSpending: 49149.74,
+      monthCount: 6,
+      monthlyExpenses: [
+        { month: '2026-01', expenses: 7747.55 },
+        { month: '2026-02', expenses: 5289.81 },
+        { month: '2026-03', expenses: 14220.5 },
+        { month: '2026-04', expenses: 7866.1 },
+        { month: '2026-05', expenses: 7857.12 },
+        { month: '2026-06', expenses: 6168.66 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result?.transactionCount).toBe(665);
+  });
+
   it('filters previous transactions and sums expenses without transfers', () => {
     const context: ConversationContext = {
       transactions,

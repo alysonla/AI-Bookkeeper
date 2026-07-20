@@ -33,6 +33,16 @@ export interface AverageMonthlySpending {
   }>;
 }
 
+export interface MedianMonthlySpending {
+  medianMonthlySpending: number;
+  totalSpending: number;
+  monthCount: number;
+  monthlyExpenses: Array<{
+    month: string;
+    expenses: number;
+  }>;
+}
+
 export interface IndividualPurchase {
   date: Date;
   merchant: string;
@@ -162,12 +172,7 @@ export class CalculatorService {
 
   /** Calculates average monthly spending from expense transactions. */
   averageMonthlySpending(transactions: Transaction[]): AverageMonthlySpending {
-    const monthlyExpenses = this.monthlyTotals(transactions)
-      .filter((total) => total.expenses > 0)
-      .map((total) => ({
-        month: total.month,
-        expenses: total.expenses,
-      }));
+    const monthlyExpenses = this.monthlyExpenseTotals(transactions);
     const totalSpending = roundMoney(
       monthlyExpenses.reduce((total, monthlyTotal) => total + monthlyTotal.expenses, 0),
     );
@@ -175,6 +180,25 @@ export class CalculatorService {
 
     return {
       averageMonthlySpending: monthCount === 0 ? 0 : roundMoney(totalSpending / monthCount),
+      totalSpending,
+      monthCount,
+      monthlyExpenses,
+    };
+  }
+
+  /** Calculates median monthly spending from expense transactions. */
+  medianMonthlySpending(transactions: Transaction[]): MedianMonthlySpending {
+    const monthlyExpenses = this.monthlyExpenseTotals(transactions);
+    const totalSpending = roundMoney(
+      monthlyExpenses.reduce((total, monthlyTotal) => total + monthlyTotal.expenses, 0),
+    );
+    const sortedExpenses = monthlyExpenses
+      .map((monthlyTotal) => monthlyTotal.expenses)
+      .sort((a, b) => a - b);
+    const monthCount = sortedExpenses.length;
+
+    return {
+      medianMonthlySpending: monthCount === 0 ? 0 : median(sortedExpenses),
       totalSpending,
       monthCount,
       monthlyExpenses,
@@ -195,8 +219,29 @@ export class CalculatorService {
         ...(transaction.account ? { account: transaction.account } : {}),
       }));
   }
+
+  private monthlyExpenseTotals(
+    transactions: Transaction[],
+  ): Array<{ month: string; expenses: number }> {
+    return this.monthlyTotals(transactions)
+      .filter((total) => total.expenses > 0)
+      .map((total) => ({
+        month: total.month,
+        expenses: total.expenses,
+      }));
+  }
 }
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function median(sortedValues: number[]): number {
+  const midpoint = Math.floor(sortedValues.length / 2);
+
+  if (sortedValues.length % 2 === 1) {
+    return sortedValues[midpoint] ?? 0;
+  }
+
+  return roundMoney(((sortedValues[midpoint - 1] ?? 0) + (sortedValues[midpoint] ?? 0)) / 2);
 }

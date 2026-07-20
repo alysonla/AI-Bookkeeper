@@ -278,4 +278,107 @@ describe('processWebhookPayload', () => {
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
   });
+
+  it('lets calculation plans handle affirmative follow-ups before transaction breakdowns', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const extractCalculationPlan = vi
+      .fn<OpenAIService['extractCalculationPlan']>()
+      .mockResolvedValue({
+        source: 'previous_result',
+        operation: 'median',
+        metric: 'expenses',
+      });
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('Your median monthly spending was $7,802.34.');
+    const context = {
+      transactions: [
+        {
+          date: new Date('2026-06-01'),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -42,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+      lastResult: {
+        monthlyExpenses: [
+          { month: '2026-01', expenses: 7747.55 },
+          { month: '2026-02', expenses: 5289.81 },
+          { month: '2026-03', expenses: 14220.5 },
+          { month: '2026-04', expenses: 7866.1 },
+          { month: '2026-05', expenses: 7857.12 },
+          { month: '2026-06', expenses: 6168.66 },
+        ],
+      },
+      transactionCount: 665,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(true),
+      getBreakdownContext: vi.fn().mockReturnValue(context),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn().mockReturnValue({
+        lastResult: context.lastResult,
+        transactionCount: 665,
+      }),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn().mockReturnValue('Here is the breakdown.'),
+    };
+    const planExecutorService = {
+      execute: vi.fn<PlanExecutorService['execute']>().mockReturnValue({
+        result: {
+          medianMonthlySpending: 7802.34,
+          totalSpending: 49149.74,
+          monthCount: 6,
+        },
+        transactionCount: 665,
+        transactions: context.transactions,
+      }),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-5',
+          timestamp: '1770000004',
+          text: 'yes',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: planExecutorService as unknown as PlanExecutorService,
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'Your median monthly spending was $7,802.34.',
+    );
+    expect(conversationService.formatBreakdown).not.toHaveBeenCalled();
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
 });

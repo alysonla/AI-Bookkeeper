@@ -1,7 +1,15 @@
 export type CalculationPlanSource = 'previous_result' | 'previous_transactions' | 'transactions';
 
 export type CalculationPlanOperation =
-  'sum' | 'average' | 'count' | 'top_n' | 'group_by' | 'list' | 'derive_from_previous' | 'unknown';
+  | 'sum'
+  | 'average'
+  | 'median'
+  | 'count'
+  | 'top_n'
+  | 'group_by'
+  | 'list'
+  | 'derive_from_previous'
+  | 'unknown';
 
 export type CalculationPlanGroupBy = 'merchant' | 'category' | 'merchant_category' | 'month';
 

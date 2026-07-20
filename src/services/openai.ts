@@ -34,6 +34,7 @@ const structuredIntentSchema = z.object({
     'biggest_individual_purchases',
     'monthly_totals',
     'average_monthly_spending',
+    'median_monthly_spending',
     'unknown',
   ]),
   category: z
@@ -78,6 +79,7 @@ const calculationPlanSchema = z.object({
   operation: z.enum([
     'sum',
     'average',
+    'median',
     'count',
     'top_n',
     'group_by',
@@ -179,6 +181,7 @@ export class OpenAIService {
                   'biggest_individual_purchases',
                   'monthly_totals',
                   'average_monthly_spending',
+                  'median_monthly_spending',
                   'unknown',
                 ],
               },
@@ -263,6 +266,7 @@ export class OpenAIService {
                 enum: [
                   'sum',
                   'average',
+                  'median',
                   'count',
                   'top_n',
                   'group_by',

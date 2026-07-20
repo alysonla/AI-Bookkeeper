@@ -88,6 +88,20 @@ export class IntentService {
           transactions: expenseTransactions,
         };
       }
+      case 'median_monthly_spending': {
+        const expenseTransactions = filteredTransactions.filter(
+          (transaction) => transaction.amount < 0,
+        );
+
+        return {
+          result: {
+            ...this.calculator.medianMonthlySpending(expenseTransactions),
+            excludedCategories: ['transfer', 'transfers'],
+          },
+          transactionCount: expenseTransactions.length,
+          transactions: expenseTransactions,
+        };
+      }
       case 'unknown':
         return {
           result: {

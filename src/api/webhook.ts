@@ -74,24 +74,6 @@ export async function processWebhookPayload(
           return;
         }
 
-        if (
-          dependencies.conversationService?.isBreakdownRequest(message.text) &&
-          dependencies.conversationService.getBreakdownContext(message.from)
-        ) {
-          dependencies.logger.info('Processing WhatsApp breakdown follow-up message.', {
-            messageId: message.id,
-          });
-          const context = dependencies.conversationService.getBreakdownContext(message.from);
-          const reply = dependencies.conversationService.formatBreakdown(
-            context?.transactions ?? [],
-            {
-              includeCategory: dependencies.conversationService.shouldIncludeCategory(message.text),
-            },
-          );
-          await dependencies.whatsappService.sendReply(message.from, reply);
-          return;
-        }
-
         const plannedResult = await tryProcessCalculationPlan(
           dependencies,
           message.from,
@@ -117,6 +99,24 @@ export async function processWebhookPayload(
             messageId: message.id,
             durationMs: Date.now() - startedAt,
           });
+          return;
+        }
+
+        if (
+          dependencies.conversationService?.isBreakdownRequest(message.text) &&
+          dependencies.conversationService.getBreakdownContext(message.from)
+        ) {
+          dependencies.logger.info('Processing WhatsApp breakdown follow-up message.', {
+            messageId: message.id,
+          });
+          const context = dependencies.conversationService.getBreakdownContext(message.from);
+          const reply = dependencies.conversationService.formatBreakdown(
+            context?.transactions ?? [],
+            {
+              includeCategory: dependencies.conversationService.shouldIncludeCategory(message.text),
+            },
+          );
+          await dependencies.whatsappService.sendReply(message.from, reply);
           return;
         }
 
@@ -162,9 +162,13 @@ async function tryProcessCalculationPlan(
   userId: string,
   messageText: string,
 ) {
-  const context = dependencies.conversationService?.getContext(userId);
+  if (!dependencies.planExecutorService || !dependencies.conversationService) {
+    return undefined;
+  }
 
-  if (!context || !dependencies.planExecutorService || !dependencies.conversationService) {
+  const context = dependencies.conversationService.getContext(userId);
+
+  if (!context) {
     return undefined;
   }
 
