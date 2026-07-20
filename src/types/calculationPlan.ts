@@ -22,6 +22,8 @@ export interface CalculationPlanFilters {
   categories?: string[];
   merchant?: string;
   excludeCategories?: string[];
+  excludeMerchants?: string[];
+  excludeMerchantStrategy?: 'all' | 'largest';
 }
 
 export interface CalculationPlan {

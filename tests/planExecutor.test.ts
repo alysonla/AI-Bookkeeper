@@ -407,6 +407,83 @@ describe('PlanExecutorService', () => {
     ]);
   });
 
+  it('recalculates a category total after excluding named merchants from previous transactions', () => {
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 5, 4),
+        merchant: 'Rupa Labs Newark De',
+        category: 'Health',
+        amount: -761,
+      },
+      {
+        date: new Date(2026, 5, 9),
+        merchant: 'Prime Iv Hydration Pleasant Grove UT',
+        category: 'Health',
+        amount: -5,
+      },
+      {
+        date: new Date(2026, 5, 21),
+        merchant: 'Prime Iv Hydration Pleasant Grove UT',
+        category: 'Health',
+        amount: -190.5,
+      },
+      {
+        date: new Date(2026, 5, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -529.5,
+      },
+      {
+        date: new Date(2026, 5, 23),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+    ];
+    const context: ConversationContext = {
+      transactions: sourceTransactions.filter((transaction) => transaction.category === 'Health'),
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 4,
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'sum',
+        metric: 'expenses',
+        filters: {
+          category: 'Health',
+          excludeMerchants: ['Rupa Labs Newark De', 'Prime Iv Hydration Pleasant Grove UT'],
+          excludeMerchantStrategy: 'largest',
+        },
+      },
+      context,
+      'if you remove Rupa Labs and my monthly subscription from Prime IV, how much would health spending be?',
+    );
+
+    expect(result?.result).toEqual({
+      totalSpending: 534.5,
+      signedTotal: -534.5,
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result?.transactionCount).toBe(2);
+    expect(result?.transactions).toEqual([
+      {
+        date: new Date(2026, 5, 9),
+        merchant: 'Prime Iv Hydration Pleasant Grove UT',
+        category: 'Health',
+        amount: -5,
+      },
+      {
+        date: new Date(2026, 5, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -529.5,
+      },
+    ]);
+  });
+
   it('groups previous compared categories by month and category', () => {
     const context: ConversationContext = {
       transactions: [

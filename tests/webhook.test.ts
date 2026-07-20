@@ -715,6 +715,214 @@ describe('processWebhookPayload', () => {
     expect(listTransactions).not.toHaveBeenCalled();
   });
 
+  it('routes total-for-category transaction wording to a sum instead of a list', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('June Health spending was $100.');
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 5, 4),
+        merchant: 'Rupa Labs',
+        category: 'Health',
+        amount: -75,
+      },
+      {
+        date: new Date(2026, 5, 10),
+        merchant: 'Prime IV',
+        category: 'Health',
+        amount: -25,
+      },
+      {
+        date: new Date(2026, 5, 12),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+      {
+        date: new Date(2026, 6, 1),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -40,
+      },
+    ];
+    const context = {
+      transactions: sourceTransactions,
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: sourceTransactions.length,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn(),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-10',
+          timestamp: '1770000009',
+          text: 'whats the total for health transactions in June?',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: new PlanExecutorService(new CalculatorService()),
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'whats the total for health transactions in June?',
+      result: {
+        totalSpending: 100,
+        signedTotal: -100,
+        excludedCategories: ['transfer', 'transfers'],
+      },
+      transactionCount: 2,
+    });
+    expect(sendReply).toHaveBeenCalledWith('15551234567', 'June Health spending was $100.');
+    expect(extractCalculationPlan).not.toHaveBeenCalled();
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
+
+  it('recalculates a prior category total after excluding named merchants', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('June Health spending without those items was $534.50.');
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 5, 4),
+        merchant: 'Rupa Labs Newark De',
+        category: 'Health',
+        amount: -761,
+      },
+      {
+        date: new Date(2026, 5, 9),
+        merchant: 'Prime Iv Hydration Pleasant Grove UT',
+        category: 'Health',
+        amount: -5,
+      },
+      {
+        date: new Date(2026, 5, 21),
+        merchant: 'Prime Iv Hydration Pleasant Grove UT',
+        category: 'Health',
+        amount: -190.5,
+      },
+      {
+        date: new Date(2026, 5, 22),
+        merchant: 'Pharmacy',
+        category: 'Health',
+        amount: -529.5,
+      },
+      {
+        date: new Date(2026, 5, 23),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+    ];
+    const context = {
+      transactions: sourceTransactions.filter((transaction) => transaction.category === 'Health'),
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 4,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn(),
+      saveCalculationContext: vi.fn(),
+      shouldIncludeCategory: vi.fn(),
+      formatBreakdown: vi.fn(),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-11',
+          timestamp: '1770000010',
+          text: 'if you remove Rupa Labs and my monthly subscription from Prime IV, how much would my health spending be?',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: new PlanExecutorService(new CalculatorService()),
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question:
+        'if you remove Rupa Labs and my monthly subscription from Prime IV, how much would my health spending be?',
+      result: {
+        totalSpending: 534.5,
+        signedTotal: -534.5,
+        excludedCategories: ['transfer', 'transfers'],
+      },
+      transactionCount: 2,
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'June Health spending without those items was $534.50.',
+    );
+    expect(extractCalculationPlan).not.toHaveBeenCalled();
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
+
   it('lists standalone category transactions from Sheets when intent extraction is unknown', async () => {
     const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
     const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({

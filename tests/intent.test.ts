@@ -147,6 +147,53 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(3);
   });
 
+  it('forces an explicitly named category sum when the model returns unknown', () => {
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'all_time',
+      },
+      [
+        {
+          date: new Date(2026, 5, 4),
+          merchant: 'Rupa Labs',
+          category: 'Health',
+          amount: -75,
+        },
+        {
+          date: new Date(2026, 5, 10),
+          merchant: 'Prime IV',
+          category: 'Health',
+          amount: -25,
+        },
+        {
+          date: new Date(2026, 5, 12),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 6, 1),
+          merchant: 'Doctor',
+          category: 'Health',
+          amount: -40,
+        },
+      ],
+      new Date('2026-07-19'),
+      'whats the total for health transactions in June?',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'category_sum',
+      totalSpending: 100,
+      signedTotal: -100,
+      includedCategories: ['Health'],
+      categories: [{ category: 'Health', total: -100, count: 2 }],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(2);
+  });
+
   it('lists explicitly named category transactions when the model returns unknown', () => {
     const marchTransactions: Transaction[] = [
       {

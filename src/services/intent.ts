@@ -49,6 +49,14 @@ export class IntentService {
       return this.categorySum(nonTransferTransactions, explicitCategories);
     }
 
+    if (sourceText && isCategorySumQuestion(sourceText)) {
+      const category = findMentionedCategory(sourceText, nonTransferTransactions);
+
+      if (category) {
+        return this.categorySum(nonTransferTransactions, [category]);
+      }
+    }
+
     const filteredTransactions = this.filterByIntent(intent, nonTransferTransactions);
 
     if (sourceText && isCategoryTotalsQuestion(sourceText)) {

@@ -219,17 +219,47 @@ function shouldSaveCalculationContext(intent: string, transactionCount: number):
 function createDeterministicFollowUpPlan(
   messageText: string,
   context: {
-    transactions: Array<{ category: string }>;
-    sourceTransactions?: Array<{ category: string }>;
+    transactions: Array<{ category: string; merchant: string; amount: number }>;
+    sourceTransactions?: Array<{ category: string; merchant: string; amount: number }>;
   },
 ): CalculationPlan | undefined {
   const normalizedText = messageText.toLowerCase();
+  const availableTransactions = [...(context.sourceTransactions ?? []), ...context.transactions];
   const mentionedCategory = findMentionedCategory(messageText, [
     ...(context.sourceTransactions ?? []),
     ...context.transactions,
   ]);
+  const mentionedExcludeMerchants = isExclusionQuestion(normalizedText)
+    ? findMentionedMerchants(messageText, availableTransactions)
+    : [];
 
-  if (mentionedCategory && /\b(?:list|show|transactions?|details?)\b/.test(normalizedText)) {
+  if (mentionedExcludeMerchants.length > 0) {
+    return {
+      source: 'previous_transactions',
+      operation: 'sum',
+      metric: 'expenses',
+      filters: {
+        ...((mentionedCategory ?? findSingleCategory(context.transactions))
+          ? { category: mentionedCategory ?? findSingleCategory(context.transactions) }
+          : {}),
+        excludeMerchants: mentionedExcludeMerchants,
+        excludeMerchantStrategy: /\bsubscription\b/.test(normalizedText) ? 'largest' : 'all',
+      },
+    };
+  }
+
+  if (mentionedCategory && isTotalQuestion(normalizedText)) {
+    return {
+      source: 'previous_transactions',
+      operation: 'sum',
+      metric: 'expenses',
+      filters: {
+        category: mentionedCategory,
+      },
+    };
+  }
+
+  if (mentionedCategory && isListQuestion(normalizedText)) {
     return {
       source: 'previous_transactions',
       operation: 'list',
@@ -252,6 +282,28 @@ function createDeterministicFollowUpPlan(
   };
 }
 
+function isTotalQuestion(normalizedText: string): boolean {
+  return /\b(?:total|sum|spend|spending|spent|how much)\b/.test(normalizedText);
+}
+
+function isListQuestion(normalizedText: string): boolean {
+  return /\b(?:list|show|details?|breakdown)\b/.test(normalizedText);
+}
+
+function isExclusionQuestion(normalizedText: string): boolean {
+  return /\b(?:remove|exclude|without|minus|take out)\b/.test(normalizedText);
+}
+
+function findSingleCategory(transactions: Array<{ category: string }>): string | undefined {
+  const categories = new Map<string, string>();
+
+  for (const transaction of transactions) {
+    categories.set(normalizeCategory(transaction.category), transaction.category);
+  }
+
+  return categories.size === 1 ? [...categories.values()][0] : undefined;
+}
+
 function findMentionedCategory(
   messageText: string,
   transactions: Array<{ category: string }>,
@@ -266,6 +318,61 @@ function findMentionedCategory(
 
     return new RegExp(`(?:^|\\s)${escapeRegExp(normalizedCategory)}(?:\\s|$)`).test(normalizedText);
   });
+}
+
+function findMentionedMerchants(
+  messageText: string,
+  transactions: Array<{ merchant: string }>,
+): string[] {
+  const normalizedText = normalizeMerchant(messageText);
+  const merchants = [...new Set(transactions.map((transaction) => transaction.merchant))].sort(
+    (left, right) => right.length - left.length,
+  );
+  const matchedMerchants: string[] = [];
+
+  for (const merchant of merchants) {
+    if (merchantPhrases(merchant).some((phrase) => normalizedText.includes(phrase))) {
+      matchedMerchants.push(merchant);
+    }
+  }
+
+  return matchedMerchants.filter(
+    (merchant, index) =>
+      matchedMerchants.findIndex((candidate) => merchantsOverlap(candidate, merchant)) === index,
+  );
+}
+
+function merchantPhrases(merchant: string): string[] {
+  const normalizedMerchant = normalizeMerchant(merchant);
+  const words = normalizedMerchant.split(' ').filter(Boolean);
+  const phrases = new Set<string>();
+
+  for (let index = 0; index < words.length - 1; index += 1) {
+    phrases.add(`${words[index]} ${words[index + 1]}`);
+  }
+
+  for (const word of words) {
+    if (word.length >= 5) {
+      phrases.add(word);
+    }
+  }
+
+  return [...phrases].filter((phrase) => phrase.length >= 5);
+}
+
+function merchantsOverlap(left: string, right: string): boolean {
+  const normalizedLeft = normalizeMerchant(left);
+  const normalizedRight = normalizeMerchant(right);
+
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+}
+
+function normalizeMerchant(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function escapeRegExp(value: string): string {

@@ -226,6 +226,11 @@ function applyFilters(
       normalizeCategory(category),
     ),
   );
+  const excludeMerchants = plan.filters?.excludeMerchants ?? [];
+  const largestMerchantTransactions =
+    plan.filters?.excludeMerchantStrategy === 'largest'
+      ? findLargestMerchantTransactions(transactions, excludeMerchants)
+      : new Set<Transaction>();
   const textDateRange = sourceText
     ? resolveDateRange('all_time', now, undefined, undefined, sourceText)
     : undefined;
@@ -237,6 +242,20 @@ function applyFilters(
 
     if (excludeCategories.has(normalizeCategory(transaction.category))) {
       return false;
+    }
+
+    if (excludeMerchants.length > 0) {
+      const merchantMatches = excludeMerchants.some((merchant) =>
+        matchesMerchant(transaction.merchant, merchant),
+      );
+
+      if (
+        merchantMatches &&
+        (plan.filters?.excludeMerchantStrategy !== 'largest' ||
+          largestMerchantTransactions.has(transaction))
+      ) {
+        return false;
+      }
     }
 
     if (plan.filters?.category && !matchesCategory(transaction.category, plan.filters.category)) {
@@ -262,6 +281,38 @@ function applyFilters(
 
     return true;
   });
+}
+
+function findLargestMerchantTransactions(
+  transactions: Transaction[],
+  merchantFilters: string[],
+): Set<Transaction> {
+  const largestTransactions = new Set<Transaction>();
+
+  for (const merchantFilter of merchantFilters) {
+    const matchingTransactions = transactions
+      .filter((transaction) => matchesMerchant(transaction.merchant, merchantFilter))
+      .sort((left, right) => Math.abs(right.amount) - Math.abs(left.amount));
+    const largestTransaction = matchingTransactions[0];
+
+    if (largestTransaction) {
+      largestTransactions.add(largestTransaction);
+    }
+  }
+
+  return largestTransactions;
+}
+
+function matchesMerchant(sourceMerchant: string, requestedMerchant: string): boolean {
+  return normalizeMerchant(sourceMerchant).includes(normalizeMerchant(requestedMerchant));
+}
+
+function normalizeMerchant(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function selectMetricTransactions(
