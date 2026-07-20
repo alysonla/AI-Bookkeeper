@@ -1,0 +1,20 @@
+export interface AppConfig {
+  port: number;
+  nodeEnv: string;
+  logLevel: string;
+  meta: {
+    verifyToken: string;
+    accessToken: string;
+    phoneNumberId: string;
+  };
+  openai: {
+    apiKey: string;
+    model: string;
+  };
+  googleSheets: {
+    spreadsheetId: string;
+    range: string;
+    serviceAccountEmail: string;
+    privateKey: string;
+  };
+}
