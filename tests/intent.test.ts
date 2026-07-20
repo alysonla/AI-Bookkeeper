@@ -122,6 +122,52 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(3);
   });
 
+  it('forces explicitly named food categories when the model returns broad expenses', () => {
+    const result = service.processIntent(
+      {
+        intent: 'expense_total',
+        dateRange: 'last_6_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+      'what was my total food spending on Groceries + Eating out for the last 6 months?',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'category_sum',
+      totalSpending: 260,
+      signedTotal: -260,
+      includedCategories: ['Groceries', 'Eating Out'],
+      categories: [
+        { category: 'Groceries', total: -200, count: 2 },
+        { category: 'Dining', total: -60, count: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(3);
+  });
+
+  it('does not collapse comparison questions into a combined category sum', () => {
+    const result = service.processIntent(
+      {
+        intent: 'category_expense_comparison',
+        categories: ['Groceries', 'Eating Out'],
+        dateRange: 'last_6_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+      'compare groceries versus eating out for the last 6 months',
+    );
+
+    expect(result.result).toEqual({
+      categories: [
+        { category: 'Groceries', total: -200, count: 2 },
+        { category: 'Dining', total: -60, count: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+  });
+
   it('resolves month names from the question when custom intent dates are missing', () => {
     const result = service.processIntent(
       {

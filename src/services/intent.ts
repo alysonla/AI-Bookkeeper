@@ -34,6 +34,12 @@ export class IntentService {
       (transaction) => !isTransfer(transaction),
     );
 
+    const explicitCategories = sourceText ? extractExplicitCategories(sourceText) : [];
+
+    if (sourceText && explicitCategories.length > 0 && isCategorySumQuestion(sourceText)) {
+      return this.categorySum(nonTransferTransactions, explicitCategories);
+    }
+
     const filteredTransactions = this.filterByIntent(intent, nonTransferTransactions);
 
     if (sourceText && isCategoryTotalsQuestion(sourceText)) {
@@ -198,6 +204,28 @@ export class IntentService {
       transactions: expenseTransactions,
     };
   }
+
+  private categorySum(transactions: Transaction[], categories: string[]): IntentProcessorResult {
+    const expenseTransactions = transactions.filter(
+      (transaction) =>
+        transaction.amount < 0 &&
+        categories.some((category) => matchesCategory(transaction.category, category)),
+    );
+    const signedTotal = this.calculator.sum(expenseTransactions);
+
+    return {
+      result: {
+        operation: 'category_sum',
+        totalSpending: Math.abs(signedTotal),
+        signedTotal,
+        includedCategories: categories,
+        categories: this.calculator.groupByCategory(expenseTransactions),
+        excludedCategories: ['transfer', 'transfers'],
+      },
+      transactionCount: expenseTransactions.length,
+      transactions: expenseTransactions,
+    };
+  }
 }
 
 function isTransfer(transaction: Transaction): boolean {
@@ -219,4 +247,33 @@ function isCategoryTotalsQuestion(sourceText: string): boolean {
     /\bcategor(?:y|ies)\s+totals?\b/.test(normalizedText) ||
     /\btotals?\s+for\s+(all|each|every)\s+categor(?:y|ies)\b/.test(normalizedText)
   );
+}
+
+function extractExplicitCategories(sourceText: string): string[] {
+  const normalizedText = sourceText.toLowerCase();
+  const categories: string[] = [];
+
+  if (/\bfood\b/.test(normalizedText)) {
+    categories.push('Groceries', 'Eating Out');
+  }
+
+  if (/\bgrocer(?:y|ies)\b/.test(normalizedText)) {
+    categories.push('Groceries');
+  }
+
+  if (/\b(?:eating\s*out|dining|restaurants?)\b/.test(normalizedText)) {
+    categories.push('Eating Out');
+  }
+
+  return [...new Set(categories)];
+}
+
+function isCategorySumQuestion(sourceText: string): boolean {
+  const normalizedText = sourceText.toLowerCase();
+
+  if (/\b(?:compare|compared|versus|vs\.?)\b/.test(normalizedText)) {
+    return false;
+  }
+
+  return /\b(?:total|spend|spending|spent|how much)\b/.test(normalizedText);
 }
