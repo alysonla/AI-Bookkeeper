@@ -52,6 +52,7 @@ describe('IntentService', () => {
         { month: '2026-06', expenses: 750 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(6);
   });
@@ -75,6 +76,7 @@ describe('IntentService', () => {
         { month: '2026-06', expenses: 750 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
   });
 
@@ -97,6 +99,7 @@ describe('IntentService', () => {
         { month: '2026-06', expenses: 750 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(6);
   });
@@ -118,6 +121,7 @@ describe('IntentService', () => {
         { category: 'Dining', total: -60, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(3);
   });
@@ -143,6 +147,7 @@ describe('IntentService', () => {
         { category: 'Dining', total: -60, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(3);
   });
@@ -190,8 +195,119 @@ describe('IntentService', () => {
       includedCategories: ['Health'],
       categories: [{ category: 'Health', total: -100, count: 2 }],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(2);
+  });
+
+  it('forces total spending from source text when the model returns unknown', () => {
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'all_time',
+      },
+      [
+        {
+          date: new Date(2026, 6, 1),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -25,
+        },
+        {
+          date: new Date(2026, 6, 2),
+          merchant: 'Target',
+          category: 'Groceries',
+          amount: -75,
+        },
+        {
+          date: new Date(2026, 6, 3),
+          merchant: 'Bank Transfer',
+          category: 'Transfer',
+          amount: -1000,
+        },
+        {
+          date: new Date(2026, 5, 30),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -40,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'how much have I spent total in July so far?',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'total_spending',
+      totalSpending: 100,
+      signedTotal: -100,
+      excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
+    });
+    expect(result.transactionCount).toBe(2);
+  });
+
+  it('compares last month spending to this month so far deterministically', () => {
+    const result = service.processIntent(
+      {
+        intent: 'expense_total',
+        dateRange: 'last_month',
+      },
+      [
+        {
+          date: new Date(2026, 5, 1),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -100,
+        },
+        {
+          date: new Date(2026, 5, 2),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -50,
+        },
+        {
+          date: new Date(2026, 6, 1),
+          merchant: 'Target',
+          category: 'Groceries',
+          amount: -80,
+        },
+        {
+          date: new Date(2026, 6, 2),
+          merchant: 'Bank Transfer',
+          category: 'Transfer',
+          amount: -1000,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'what was my total spending last month compared to this month so far?',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'period_spending_comparison',
+      periods: [
+        {
+          label: 'last_month',
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          totalSpending: 150,
+          signedTotal: -150,
+          transactionCount: 2,
+        },
+        {
+          label: 'this_month_so_far',
+          startDate: '2026-07-01',
+          endDate: '2026-07-20',
+          totalSpending: 80,
+          signedTotal: -80,
+          transactionCount: 1,
+        },
+      ],
+      difference: 70,
+      direction: 'lower',
+      excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
+    });
+    expect(result.transactionCount).toBe(3);
   });
 
   it('lists explicitly named category transactions when the model returns unknown', () => {
@@ -272,6 +388,7 @@ describe('IntentService', () => {
         { category: 'Dining', total: -60, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
   });
 
@@ -302,6 +419,7 @@ describe('IntentService', () => {
         { category: 'Home Maintenance', total: -50, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(2);
   });
@@ -335,6 +453,7 @@ describe('IntentService', () => {
         { category: 'Home Maintenance', total: -50, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(2);
   });
@@ -366,6 +485,7 @@ describe('IntentService', () => {
         { category: 'Home Maintenance', total: -50, count: 1 },
       ],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     });
     expect(result.transactionCount).toBe(2);
   });

@@ -21,6 +21,10 @@ export class IntentService {
     now = new Date(),
     sourceText?: string,
   ): IntentProcessorResult {
+    if (sourceText && isLastMonthToThisMonthComparison(sourceText)) {
+      return this.lastMonthToThisMonthComparison(transactions, now);
+    }
+
     const dateRange = resolveDateRange(
       intent.dateRange,
       now,
@@ -63,6 +67,10 @@ export class IntentService {
       return this.categoryTotals(filteredTransactions);
     }
 
+    if (sourceText && isTotalSpendingQuestion(sourceText)) {
+      return this.expenseTotal(nonTransferTransactions);
+    }
+
     switch (intent.intent) {
       case 'sum_category':
         if (intent.category && isAllCategoryRequest(intent.category)) {
@@ -99,6 +107,7 @@ export class IntentService {
           result: {
             categories: this.calculator.groupByCategory(expenseTransactions),
             excludedCategories: ['transfer', 'transfers'],
+            currency: 'USD',
           },
           transactionCount: expenseTransactions.length,
           transactions: expenseTransactions,
@@ -143,6 +152,7 @@ export class IntentService {
           result: {
             ...this.calculator.averageMonthlySpending(expenseTransactions),
             excludedCategories: ['transfer', 'transfers'],
+            currency: 'USD',
           },
           transactionCount: expenseTransactions.length,
           transactions: expenseTransactions,
@@ -157,6 +167,7 @@ export class IntentService {
           result: {
             ...this.calculator.medianMonthlySpending(expenseTransactions),
             excludedCategories: ['transfer', 'transfers'],
+            currency: 'USD',
           },
           transactionCount: expenseTransactions.length,
           transactions: expenseTransactions,
@@ -216,6 +227,7 @@ export class IntentService {
         operation: 'category_totals',
         categories: this.calculator.groupByCategory(expenseTransactions),
         excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
       },
       transactionCount: expenseTransactions.length,
       transactions: expenseTransactions,
@@ -238,6 +250,7 @@ export class IntentService {
         includedCategories: categories,
         categories: this.calculator.groupByCategory(expenseTransactions),
         excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
       },
       transactionCount: expenseTransactions.length,
       transactions: expenseTransactions,
@@ -259,6 +272,80 @@ export class IntentService {
       sourceTransactions: transactions,
     };
   }
+
+  private expenseTotal(transactions: Transaction[]): IntentProcessorResult {
+    const expenseTransactions = transactions.filter((transaction) => transaction.amount < 0);
+    const signedTotal = this.calculator.sum(expenseTransactions);
+
+    return {
+      result: {
+        operation: 'total_spending',
+        totalSpending: Math.abs(signedTotal),
+        signedTotal,
+        excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
+      },
+      transactionCount: expenseTransactions.length,
+      transactions: expenseTransactions,
+    };
+  }
+
+  private lastMonthToThisMonthComparison(
+    transactions: Transaction[],
+    now: Date,
+  ): IntentProcessorResult {
+    const nonTransferTransactions = transactions.filter((transaction) => !isTransfer(transaction));
+    const lastMonthRange = resolveDateRange('last_month', now);
+    const thisMonthRange = resolveDateRange('this_month', now);
+    const lastMonthTransactions = nonTransferTransactions.filter((transaction) =>
+      isWithinDateRange(transaction.date, lastMonthRange),
+    );
+    const thisMonthTransactions = nonTransferTransactions.filter((transaction) =>
+      isWithinDateRange(transaction.date, thisMonthRange),
+    );
+    const lastMonthExpenses = lastMonthTransactions.filter((transaction) => transaction.amount < 0);
+    const thisMonthExpenses = thisMonthTransactions.filter((transaction) => transaction.amount < 0);
+    const lastMonthSignedTotal = this.calculator.sum(lastMonthExpenses);
+    const thisMonthSignedTotal = this.calculator.sum(thisMonthExpenses);
+
+    return {
+      result: {
+        operation: 'period_spending_comparison',
+        periods: [
+          {
+            label: 'last_month',
+            startDate: formatDate(lastMonthRange.start),
+            endDate: formatDate(lastMonthRange.end),
+            totalSpending: Math.abs(lastMonthSignedTotal),
+            signedTotal: lastMonthSignedTotal,
+            transactionCount: lastMonthExpenses.length,
+          },
+          {
+            label: 'this_month_so_far',
+            startDate: formatDate(thisMonthRange.start),
+            endDate: formatDate(now),
+            totalSpending: Math.abs(thisMonthSignedTotal),
+            signedTotal: thisMonthSignedTotal,
+            transactionCount: thisMonthExpenses.length,
+          },
+        ],
+        difference: Math.abs(
+          Math.round((Math.abs(thisMonthSignedTotal) - Math.abs(lastMonthSignedTotal)) * 100) / 100,
+        ),
+        direction:
+          Math.abs(thisMonthSignedTotal) > Math.abs(lastMonthSignedTotal)
+            ? 'higher'
+            : Math.abs(thisMonthSignedTotal) < Math.abs(lastMonthSignedTotal)
+              ? 'lower'
+              : 'same',
+        excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
+      },
+      transactionCount: lastMonthExpenses.length + thisMonthExpenses.length,
+      transactions: [...lastMonthExpenses, ...thisMonthExpenses],
+      sourceTransactions: nonTransferTransactions,
+    };
+  }
 }
 
 function isTransfer(transaction: Transaction): boolean {
@@ -275,11 +362,19 @@ function isCategoryTotalsQuestion(sourceText: string): boolean {
   const normalizedText = sourceText.toLowerCase();
 
   return (
-    /\b(all|each|every)\s+categor(?:y|ies)\b/.test(normalizedText) ||
+    /\b(all|each|every)(?:\s+the)?\s+categor(?:y|ies)\b/.test(normalizedText) ||
     /\bby\s+categor(?:y|ies)\b/.test(normalizedText) ||
     /\bcategor(?:y|ies)\s+totals?\b/.test(normalizedText) ||
-    /\btotals?\s+for\s+(all|each|every)\s+categor(?:y|ies)\b/.test(normalizedText)
+    /\btotals?\s+for\s+(all|each|every)(?:\s+the)?\s+categor(?:y|ies)\b/.test(normalizedText)
   );
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function extractExplicitCategories(sourceText: string): string[] {
@@ -309,6 +404,25 @@ function isCategorySumQuestion(sourceText: string): boolean {
   }
 
   return /\b(?:total|spend|spending|spent|how much)\b/.test(normalizedText);
+}
+
+function isTotalSpendingQuestion(sourceText: string): boolean {
+  const normalizedText = sourceText.toLowerCase();
+
+  return (
+    /\b(?:total|how much)\b/.test(normalizedText) &&
+    /\b(?:spend|spending|spent)\b/.test(normalizedText)
+  );
+}
+
+function isLastMonthToThisMonthComparison(sourceText: string): boolean {
+  const normalizedText = sourceText.toLowerCase();
+
+  return (
+    /\b(?:compare|compared|versus|vs\.?)\b/.test(normalizedText) &&
+    /\blast\s+month\b/.test(normalizedText) &&
+    /\bthis\s+month(?:\s+so\s+far)?\b/.test(normalizedText)
+  );
 }
 
 function isTransactionListQuestion(sourceText: string): boolean {

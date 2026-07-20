@@ -907,6 +907,7 @@ describe('processWebhookPayload', () => {
       includedCategories: ['Health'],
       categories: [{ category: 'Health', total: -100, count: 2 }],
       excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
     };
 
     expect(extractCalculationPlan).not.toHaveBeenCalled();
@@ -1399,6 +1400,7 @@ describe('processWebhookPayload', () => {
           { category: 'Eating Out', total: -40, count: 1 },
         ],
         excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
       };
 
       expect(extractCalculationPlan).not.toHaveBeenCalled();
