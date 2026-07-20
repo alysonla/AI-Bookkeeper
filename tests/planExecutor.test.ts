@@ -108,6 +108,38 @@ describe('PlanExecutorService', () => {
     expect(result?.transactionCount).toBe(665);
   });
 
+  it('returns previous results for observational follow-ups', () => {
+    const context: ConversationContext = {
+      transactions,
+      createdAt: new Date('2026-07-01'),
+      lastQuestion: 'list out the total for all categories for the month of march',
+      lastResult: [
+        { category: 'Milo', total: -3624.55, count: 2 },
+        { category: 'Groceries', total: -1549.98, count: 24 },
+        { category: 'Home Maintenance', total: -1440.01, count: 10 },
+      ],
+      transactionCount: 120,
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_result',
+        operation: 'answer_from_previous_result',
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual({
+      previousQuestion: 'list out the total for all categories for the month of march',
+      previousResult: [
+        { category: 'Milo', total: -3624.55, count: 2 },
+        { category: 'Groceries', total: -1549.98, count: 24 },
+        { category: 'Home Maintenance', total: -1440.01, count: 10 },
+      ],
+    });
+    expect(result?.transactionCount).toBe(120);
+  });
+
   it('filters previous transactions and sums expenses without transfers', () => {
     const context: ConversationContext = {
       transactions,

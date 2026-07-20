@@ -8,6 +8,7 @@ export type CalculationPlanOperation =
   | 'top_n'
   | 'group_by'
   | 'list'
+  | 'answer_from_previous_result'
   | 'derive_from_previous'
   | 'unknown';
 

@@ -33,6 +33,10 @@ export class PlanExecutorService {
     plan: CalculationPlan,
     context: ConversationContext,
   ): PlanExecutionResult | undefined {
+    if (plan.operation === 'answer_from_previous_result') {
+      return this.executePreviousResultAnswerPlan(context);
+    }
+
     if (plan.operation === 'median') {
       return this.executePreviousMonthlyMedianPlan(context);
     }
@@ -58,6 +62,23 @@ export class PlanExecutorService {
         approximate: plan.approximate ?? false,
       },
       transactionCount: context.transactions.length,
+      transactions: context.transactions,
+    };
+  }
+
+  private executePreviousResultAnswerPlan(
+    context: ConversationContext,
+  ): PlanExecutionResult | undefined {
+    if (context.lastResult === undefined) {
+      return undefined;
+    }
+
+    return {
+      result: {
+        previousQuestion: context.lastQuestion ?? null,
+        previousResult: context.lastResult,
+      },
+      transactionCount: context.transactionCount ?? context.transactions.length,
       transactions: context.transactions,
     };
   }

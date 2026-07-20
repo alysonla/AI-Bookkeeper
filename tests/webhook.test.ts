@@ -381,4 +381,107 @@ describe('processWebhookPayload', () => {
     expect(extractIntent).not.toHaveBeenCalled();
     expect(listTransactions).not.toHaveBeenCalled();
   });
+
+  it('answers observational follow-ups from the previous result without reading Sheets', async () => {
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const extractIntent = vi.fn<OpenAIService['extractIntent']>();
+    const listTransactions = vi.fn<SheetsService['listTransactions']>();
+    const extractCalculationPlan = vi
+      .fn<OpenAIService['extractCalculationPlan']>()
+      .mockResolvedValue({
+        source: 'previous_result',
+        operation: 'answer_from_previous_result',
+      });
+    const generateResponse = vi
+      .fn<OpenAIService['generateResponse']>()
+      .mockResolvedValue('Yes, those categories were the main March drivers.');
+    const context = {
+      transactions: [
+        {
+          date: new Date('2026-03-01'),
+          merchant: 'Vet',
+          category: 'Milo',
+          amount: -3624.55,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+      lastQuestion: 'list out the total for all categories for the month of march',
+      lastResult: [
+        { category: 'Milo', total: -3624.55, count: 2 },
+        { category: 'Groceries', total: -1549.98, count: 24 },
+        { category: 'Home Maintenance', total: -1440.01, count: 10 },
+      ],
+      transactionCount: 120,
+    };
+    const conversationService = {
+      isBreakdownRequest: vi.fn().mockReturnValue(false),
+      getBreakdownContext: vi.fn().mockReturnValue(undefined),
+      getContext: vi.fn().mockReturnValue(context),
+      summarizeContext: vi.fn().mockReturnValue({
+        lastQuestion: context.lastQuestion,
+        lastResult: context.lastResult,
+        transactionCount: 120,
+      }),
+      saveCalculationContext: vi.fn(),
+    };
+    const planExecutorService = {
+      execute: vi.fn<PlanExecutorService['execute']>().mockReturnValue({
+        result: {
+          previousQuestion: context.lastQuestion,
+          previousResult: context.lastResult,
+        },
+        transactionCount: 120,
+        transactions: context.transactions,
+      }),
+    };
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-6',
+          timestamp: '1770000005',
+          text: 'thanks, so Milo and Home Maintenance were the outliers',
+        },
+      ]),
+      sendReply,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent,
+          extractCalculationPlan,
+          generateResponse,
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions,
+        } as unknown as SheetsService,
+        intentService: {} as IntentService,
+        conversationService: conversationService as unknown as ConversationService,
+        planExecutorService: planExecutorService as unknown as PlanExecutorService,
+        logger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(generateResponse).toHaveBeenCalledWith({
+      question: 'thanks, so Milo and Home Maintenance were the outliers',
+      result: {
+        previousQuestion: context.lastQuestion,
+        previousResult: context.lastResult,
+      },
+      transactionCount: 120,
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      '15551234567',
+      'Yes, those categories were the main March drivers.',
+    );
+    expect(extractIntent).not.toHaveBeenCalled();
+    expect(listTransactions).not.toHaveBeenCalled();
+  });
 });
