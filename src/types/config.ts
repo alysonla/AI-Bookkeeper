@@ -7,6 +7,9 @@ export interface AppConfig {
     accessToken: string;
     phoneNumberId: string;
   };
+  features: {
+    whatsappSmokeTest: boolean;
+  };
   openai: {
     apiKey: string;
     model: string;

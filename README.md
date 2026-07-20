@@ -47,6 +47,48 @@ The Google Sheets service maps rows into normalized `Transaction` objects. Calcu
 
 See `.env.example` for required configuration.
 
+## WhatsApp Local Setup
+
+Meta requires a public HTTPS callback URL for webhook verification. For local development, run Penny locally and expose it with an HTTPS tunnel such as ngrok or Cloudflare Tunnel.
+
+1. Create or open a Meta developer app at [Meta for Developers](https://developers.facebook.com/).
+2. Add the WhatsApp product.
+3. Copy the WhatsApp Phone Number ID into `META_PHONE_NUMBER_ID`.
+4. Copy a temporary or permanent Meta access token into `META_ACCESS_TOKEN`.
+5. Choose a local secret value for `META_VERIFY_TOKEN`.
+6. Enable smoke-test mode while validating WhatsApp plumbing:
+
+   ```bash
+   WHATSAPP_SMOKE_TEST=true
+   ```
+
+7. Start Penny:
+
+   ```bash
+   npm run dev
+   ```
+
+8. Expose the local server over HTTPS:
+
+   ```bash
+   ngrok http 3000
+   ```
+
+9. In the Meta app dashboard, configure the WhatsApp webhook:
+   - Callback URL: `https://<your-tunnel-domain>/webhook`
+   - Verify token: the same value as `META_VERIFY_TOKEN`
+   - Subscribe to the `messages` webhook field
+
+10. Send a WhatsApp test message to the Meta test business number.
+
+When `WHATSAPP_SMOKE_TEST=true`, Penny replies with:
+
+```text
+Penny received: <incoming message>
+```
+
+This confirms webhook verification, inbound message parsing, and outbound WhatsApp replies without calling OpenAI or Google Sheets. Disable smoke-test mode to run the full bookkeeping flow.
+
 ## Architecture
 
 ```text

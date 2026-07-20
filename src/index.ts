@@ -34,6 +34,7 @@ app.use(
     sheetsService,
     intentService,
     logger,
+    whatsappSmokeTest: config.features.whatsappSmokeTest,
   }),
 );
 
