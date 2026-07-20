@@ -61,6 +61,22 @@ describe('CalculatorService', () => {
     });
   });
 
+  it('groups monthly expenses by category', () => {
+    expect(
+      calculator.monthlyExpensesByCategory([
+        { date: new Date('2026-01-01'), merchant: 'Costco', category: 'Groceries', amount: -100 },
+        { date: new Date('2026-01-03'), merchant: 'Cafe', category: 'Eating Out', amount: -40 },
+        { date: new Date('2026-01-04'), merchant: 'Cafe', category: 'Eating Out', amount: -25 },
+        { date: new Date('2026-02-01'), merchant: 'Costco', category: 'Groceries', amount: -80 },
+        { date: new Date('2026-02-02'), merchant: 'Paycheck', category: 'Income', amount: 1000 },
+      ]),
+    ).toEqual([
+      { month: '2026-01', category: 'Eating Out', expenses: 65, count: 2 },
+      { month: '2026-01', category: 'Groceries', expenses: 100, count: 1 },
+      { month: '2026-02', category: 'Groceries', expenses: 80, count: 1 },
+    ]);
+  });
+
   it('calculates median monthly spending', () => {
     expect(
       calculator.medianMonthlySpending([

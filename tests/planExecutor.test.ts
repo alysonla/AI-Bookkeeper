@@ -160,6 +160,52 @@ describe('PlanExecutorService', () => {
     ]);
   });
 
+  it('groups previous compared categories by month and category', () => {
+    const context: ConversationContext = {
+      transactions: [
+        {
+          date: new Date('2026-01-05'),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -100,
+        },
+        {
+          date: new Date('2026-01-10'),
+          merchant: 'Cafe',
+          category: 'Eating Out',
+          amount: -40,
+        },
+        {
+          date: new Date('2026-02-05'),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -80,
+        },
+      ],
+      createdAt: new Date('2026-07-01'),
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'group_by',
+        metric: 'expenses',
+        groupBy: 'month_category',
+        filters: {
+          categories: ['Groceries', 'Eating Out'],
+        },
+      },
+      context,
+    );
+
+    expect(result?.result).toEqual([
+      { month: '2026-01', category: 'Eating Out', expenses: 40, count: 1 },
+      { month: '2026-01', category: 'Groceries', expenses: 100, count: 1 },
+      { month: '2026-02', category: 'Groceries', expenses: 80, count: 1 },
+    ]);
+    expect(result?.transactionCount).toBe(3);
+  });
+
   it('does not execute unknown plans', () => {
     const context: ConversationContext = {
       transactions,

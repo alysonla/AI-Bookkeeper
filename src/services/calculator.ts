@@ -23,6 +23,13 @@ export interface MonthlyTotal {
   cashFlow: number;
 }
 
+export interface MonthlyCategoryTotal {
+  month: string;
+  category: string;
+  expenses: number;
+  count: number;
+}
+
 export interface AverageMonthlySpending {
   averageMonthlySpending: number;
   totalSpending: number;
@@ -168,6 +175,31 @@ export class CalculatorService {
     }
 
     return [...totals.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  /** Groups expense totals by month and category. */
+  monthlyExpensesByCategory(transactions: Transaction[]): MonthlyCategoryTotal[] {
+    const totals = new Map<string, MonthlyCategoryTotal>();
+
+    for (const transaction of transactions.filter((item) => item.amount < 0)) {
+      const month = transaction.date.toISOString().slice(0, 7);
+      const key = `${month}::${transaction.category.toLowerCase()}`;
+      const current = totals.get(key) ?? {
+        month,
+        category: transaction.category,
+        expenses: 0,
+        count: 0,
+      };
+
+      current.expenses = roundMoney(current.expenses + Math.abs(transaction.amount));
+      current.count += 1;
+      totals.set(key, current);
+    }
+
+    return [...totals.values()].sort((a, b) => {
+      const monthComparison = a.month.localeCompare(b.month);
+      return monthComparison === 0 ? a.category.localeCompare(b.category) : monthComparison;
+    });
   }
 
   /** Calculates average monthly spending from expense transactions. */

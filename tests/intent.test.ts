@@ -101,6 +101,27 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(6);
   });
 
+  it('compares expenses across requested categories', () => {
+    const result = service.processIntent(
+      {
+        intent: 'category_expense_comparison',
+        categories: ['Groceries', 'Dining'],
+        dateRange: 'last_6_months',
+      },
+      transactions,
+      new Date('2026-07-19'),
+    );
+
+    expect(result.result).toEqual({
+      categories: [
+        { category: 'Groceries', total: -200, count: 2 },
+        { category: 'Dining', total: -60, count: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+    });
+    expect(result.transactionCount).toBe(3);
+  });
+
   it('includes categories in biggest expense results', () => {
     const result = service.processIntent(
       {

@@ -11,12 +11,14 @@ export type CalculationPlanOperation =
   | 'derive_from_previous'
   | 'unknown';
 
-export type CalculationPlanGroupBy = 'merchant' | 'category' | 'merchant_category' | 'month';
+export type CalculationPlanGroupBy =
+  'merchant' | 'category' | 'merchant_category' | 'month' | 'month_category';
 
 export type CalculationPlanMetric = 'amount' | 'expenses' | 'income' | 'cash_flow';
 
 export interface CalculationPlanFilters {
   category?: string;
+  categories?: string[];
   merchant?: string;
   excludeCategories?: string[];
 }

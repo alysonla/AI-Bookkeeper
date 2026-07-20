@@ -166,6 +166,8 @@ export class PlanExecutorService {
         return this.calculator.groupByMerchantAndCategory(metricTransactions);
       case 'month':
         return this.calculator.monthlyTotals(metricTransactions);
+      case 'month_category':
+        return this.calculator.monthlyExpensesByCategory(metricTransactions);
       default:
         return this.calculator.groupByCategory(metricTransactions);
     }
@@ -189,6 +191,14 @@ function applyFilters(transactions: Transaction[], plan: CalculationPlan): Trans
       transaction.category.toLowerCase() !== plan.filters.category.toLowerCase()
     ) {
       return false;
+    }
+
+    if (plan.filters?.categories?.length) {
+      const categories = new Set(plan.filters.categories.map((category) => category.toLowerCase()));
+
+      if (!categories.has(transaction.category.toLowerCase())) {
+        return false;
+      }
     }
 
     if (

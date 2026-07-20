@@ -44,6 +44,20 @@ export class IntentService {
           transactionCount: filteredTransactions.length,
           transactions: filteredTransactions,
         };
+      case 'category_expense_comparison': {
+        const expenseTransactions = filteredTransactions.filter(
+          (transaction) => transaction.amount < 0,
+        );
+
+        return {
+          result: {
+            categories: this.calculator.groupByCategory(expenseTransactions),
+            excludedCategories: ['transfer', 'transfers'],
+          },
+          transactionCount: expenseTransactions.length,
+          transactions: expenseTransactions,
+        };
+      }
       case 'biggest_expenses':
         return {
           result: this.calculator
@@ -117,6 +131,13 @@ export class IntentService {
     if (intent.intent === 'sum_category' && intent.category) {
       return transactions.filter(
         (transaction) => transaction.category.toLowerCase() === intent.category?.toLowerCase(),
+      );
+    }
+
+    if (intent.intent === 'category_expense_comparison' && intent.categories?.length) {
+      const categories = new Set(intent.categories.map((category) => category.toLowerCase()));
+      return transactions.filter((transaction) =>
+        categories.has(transaction.category.toLowerCase()),
       );
     }
 

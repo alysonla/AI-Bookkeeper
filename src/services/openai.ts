@@ -30,6 +30,7 @@ const structuredIntentSchema = z.object({
     'income_total',
     'expense_total',
     'cash_flow',
+    'category_expense_comparison',
     'biggest_expenses',
     'biggest_individual_purchases',
     'monthly_totals',
@@ -39,6 +40,10 @@ const structuredIntentSchema = z.object({
   ]),
   category: z
     .string()
+    .nullable()
+    .transform((value) => value ?? undefined),
+  categories: z
+    .array(z.string())
     .nullable()
     .transform((value) => value ?? undefined),
   merchant: z
@@ -97,6 +102,10 @@ const calculationPlanSchema = z.object({
         .string()
         .nullable()
         .transform((value) => value ?? undefined),
+      categories: z
+        .array(z.string())
+        .nullable()
+        .transform((value) => value ?? undefined),
       excludeCategories: z
         .array(z.string())
         .nullable()
@@ -105,7 +114,7 @@ const calculationPlanSchema = z.object({
     .nullable()
     .transform((value) => value ?? undefined),
   groupBy: z
-    .enum(['merchant', 'category', 'merchant_category', 'month'])
+    .enum(['merchant', 'category', 'merchant_category', 'month', 'month_category'])
     .nullable()
     .transform((value) => value ?? undefined),
   metric: z
@@ -162,6 +171,7 @@ export class OpenAIService {
             required: [
               'intent',
               'category',
+              'categories',
               'merchant',
               'dateRange',
               'startDate',
@@ -177,6 +187,7 @@ export class OpenAIService {
                   'income_total',
                   'expense_total',
                   'cash_flow',
+                  'category_expense_comparison',
                   'biggest_expenses',
                   'biggest_individual_purchases',
                   'monthly_totals',
@@ -186,6 +197,9 @@ export class OpenAIService {
                 ],
               },
               category: { type: ['string', 'null'] },
+              categories: {
+                anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+              },
               merchant: { type: ['string', 'null'] },
               dateRange: {
                 type: 'string',
@@ -280,9 +294,12 @@ export class OpenAIService {
                   {
                     type: 'object',
                     additionalProperties: false,
-                    required: ['category', 'merchant', 'excludeCategories'],
+                    required: ['category', 'categories', 'merchant', 'excludeCategories'],
                     properties: {
                       category: { type: ['string', 'null'] },
+                      categories: {
+                        anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+                      },
                       merchant: { type: ['string', 'null'] },
                       excludeCategories: {
                         anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
@@ -294,7 +311,14 @@ export class OpenAIService {
               },
               groupBy: {
                 type: ['string', 'null'],
-                enum: ['merchant', 'category', 'merchant_category', 'month', null],
+                enum: [
+                  'merchant',
+                  'category',
+                  'merchant_category',
+                  'month',
+                  'month_category',
+                  null,
+                ],
               },
               metric: {
                 type: ['string', 'null'],
