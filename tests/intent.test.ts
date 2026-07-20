@@ -152,6 +152,73 @@ describe('IntentService', () => {
     expect(result.transactionCount).toBe(3);
   });
 
+  it('groups explicitly named food category spending by month', () => {
+    const result = service.processIntent(
+      {
+        intent: 'expense_total',
+        dateRange: 'last_6_months',
+      },
+      [
+        {
+          date: new Date(2026, 0, 5),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -100,
+        },
+        {
+          date: new Date(2026, 0, 10),
+          merchant: 'Cafe',
+          category: 'Dining',
+          amount: -40,
+        },
+        {
+          date: new Date(2026, 2, 3),
+          merchant: 'Target',
+          category: 'Groceries',
+          amount: -120,
+        },
+        {
+          date: new Date(2026, 5, 2),
+          merchant: 'Restaurant',
+          category: 'Eating Out',
+          amount: -60,
+        },
+        {
+          date: new Date(2026, 6, 2),
+          merchant: 'July Cafe',
+          category: 'Eating Out',
+          amount: -90,
+        },
+        {
+          date: new Date(2026, 2, 5),
+          merchant: 'Bank Transfer',
+          category: 'Transfer',
+          amount: -1000,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'ok what is my total food costs (eating out + groceries) each month for the last 6 months?',
+    );
+
+    expect(result.result).toEqual({
+      operation: 'monthly_category_sum',
+      totalSpending: 320,
+      signedTotal: -320,
+      includedCategories: ['Groceries', 'Eating Out'],
+      monthlyTotals: [
+        { month: '2026-01', totalSpending: 140, signedTotal: -140, transactionCount: 2 },
+        { month: '2026-02', totalSpending: 0, signedTotal: 0, transactionCount: 0 },
+        { month: '2026-03', totalSpending: 120, signedTotal: -120, transactionCount: 1 },
+        { month: '2026-04', totalSpending: 0, signedTotal: 0, transactionCount: 0 },
+        { month: '2026-05', totalSpending: 0, signedTotal: 0, transactionCount: 0 },
+        { month: '2026-06', totalSpending: 60, signedTotal: -60, transactionCount: 1 },
+      ],
+      excludedCategories: ['transfer', 'transfers'],
+      currency: 'USD',
+    });
+    expect(result.transactionCount).toBe(4);
+  });
+
   it('forces an explicitly named category sum when the model returns unknown', () => {
     const result = service.processIntent(
       {

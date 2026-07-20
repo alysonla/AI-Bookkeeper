@@ -26,6 +26,7 @@ If the result already contains an average, total, or monthly values, state them 
 If the result contains medianMonthlySpending, state it directly and include the monthly values when useful.
 For category_totals results, list each category with its total and transaction count.
 For category_sum results, state totalSpending, transactionCount, and the includedCategories. If categories are provided, include the category breakdown.
+For monthly_category_sum results, list each month with totalSpending and transactionCount, and mention the includedCategories.
 For total_spending results, state totalSpending and transactionCount.
 For period_spending_comparison results, compare the period totals and state the difference/direction.
 If the result is an array of transactions, list the transactions with date, merchant, amount, and account when available.

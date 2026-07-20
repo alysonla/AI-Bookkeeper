@@ -49,6 +49,10 @@ export class IntentService {
       }
     }
 
+    if (sourceText && explicitCategories.length > 0 && isMonthlyCategorySumQuestion(sourceText)) {
+      return this.monthlyCategorySum(nonTransferTransactions, explicitCategories, dateRange);
+    }
+
     if (sourceText && explicitCategories.length > 0 && isCategorySumQuestion(sourceText)) {
       return this.categorySum(nonTransferTransactions, explicitCategories);
     }
@@ -258,6 +262,62 @@ export class IntentService {
     };
   }
 
+  private monthlyCategorySum(
+    transactions: Transaction[],
+    categories: string[],
+    dateRange: { start: Date; end: Date },
+  ): IntentProcessorResult {
+    const expenseTransactions = transactions.filter(
+      (transaction) =>
+        transaction.amount < 0 &&
+        categories.some((category) => matchesCategory(transaction.category, category)),
+    );
+    const monthlyTotals = createMonthBuckets(dateRange).map((month) => ({
+      month,
+      totalSpending: 0,
+      signedTotal: 0,
+      transactionCount: 0,
+    }));
+    const monthlyTotalsByMonth = new Map(
+      monthlyTotals.map((monthlyTotal) => [monthlyTotal.month, monthlyTotal]),
+    );
+
+    for (const transaction of expenseTransactions) {
+      const month = formatMonth(transaction.date);
+      const monthlyTotal = monthlyTotalsByMonth.get(month) ?? {
+        month,
+        totalSpending: 0,
+        signedTotal: 0,
+        transactionCount: 0,
+      };
+
+      monthlyTotal.signedTotal = roundMoney(monthlyTotal.signedTotal + transaction.amount);
+      monthlyTotal.totalSpending = Math.abs(monthlyTotal.signedTotal);
+      monthlyTotal.transactionCount += 1;
+      monthlyTotalsByMonth.set(month, monthlyTotal);
+    }
+
+    const sortedMonthlyTotals = [...monthlyTotalsByMonth.values()].sort((left, right) =>
+      left.month.localeCompare(right.month),
+    );
+    const signedTotal = this.calculator.sum(expenseTransactions);
+
+    return {
+      result: {
+        operation: 'monthly_category_sum',
+        totalSpending: Math.abs(signedTotal),
+        signedTotal,
+        includedCategories: categories,
+        monthlyTotals: sortedMonthlyTotals,
+        excludedCategories: ['transfer', 'transfers'],
+        currency: 'USD',
+      },
+      transactionCount: expenseTransactions.length,
+      transactions: expenseTransactions,
+      sourceTransactions: transactions,
+    };
+  }
+
   private transactionList(transactions: Transaction[], category: string): IntentProcessorResult {
     const matchingTransactions = transactions
       .filter(
@@ -377,6 +437,34 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatMonth(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+
+  return `${year}-${month}`;
+}
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function createMonthBuckets(dateRange: { start: Date; end: Date }): string[] {
+  if (!Number.isFinite(dateRange.start.getTime()) || !Number.isFinite(dateRange.end.getTime())) {
+    return [];
+  }
+
+  const months: string[] = [];
+  const cursor = new Date(dateRange.start.getFullYear(), dateRange.start.getMonth(), 1);
+  const finalMonth = new Date(dateRange.end.getFullYear(), dateRange.end.getMonth(), 1);
+
+  while (cursor <= finalMonth && months.length < 120) {
+    months.push(formatMonth(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return months;
+}
+
 function extractExplicitCategories(sourceText: string): string[] {
   const normalizedText = sourceText.toLowerCase();
   const categories: string[] = [];
@@ -404,6 +492,15 @@ function isCategorySumQuestion(sourceText: string): boolean {
   }
 
   return /\b(?:total|spend|spending|spent|how much)\b/.test(normalizedText);
+}
+
+function isMonthlyCategorySumQuestion(sourceText: string): boolean {
+  const normalizedText = sourceText.toLowerCase();
+
+  return (
+    /\b(?:each|every|per|by)\s+months?\b/.test(normalizedText) ||
+    /\bmonths?\s*(?:by|for|over|across)\s*(?:each|every)?\b/.test(normalizedText)
+  );
 }
 
 function isTotalSpendingQuestion(sourceText: string): boolean {
