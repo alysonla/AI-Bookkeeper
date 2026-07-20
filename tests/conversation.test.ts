@@ -17,6 +17,7 @@ describe('ConversationService', () => {
 
     expect(service.getBreakdownContext('user-1', new Date('2026-07-01T00:00:00Z'))).toEqual({
       transactions,
+      sourceTransactions: transactions,
       createdAt: new Date('2026-07-01T00:00:00Z'),
     });
     expect(service.getBreakdownContext('user-1', new Date('2026-07-01T00:00:02Z'))).toBeUndefined();
@@ -65,6 +66,43 @@ describe('ConversationService', () => {
       lastNumericResult: -42,
       transactionCount: 1,
       availableTransactionCount: 1,
+      sourceTransactionCount: 1,
+    });
+  });
+
+  it('stores a broader source transaction set for follow-up calculations', () => {
+    const service = new ConversationService();
+    const sourceTransactions = [
+      {
+        date: new Date('2026-03-01'),
+        merchant: 'Vet',
+        category: 'Milo',
+        amount: -100,
+      },
+      {
+        date: new Date('2026-03-02'),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -50,
+      },
+    ];
+    const narrowedTransactions = [sourceTransactions[0]!];
+
+    service.saveCalculationContext('user-1', {
+      question: 'were Milo expenses an outlier?',
+      result: [{ category: 'Milo', total: -100, count: 1 }],
+      transactionCount: 1,
+      transactions: narrowedTransactions,
+      sourceTransactions,
+    });
+
+    const context = service.getContext('user-1');
+
+    expect(context?.transactions).toEqual(narrowedTransactions);
+    expect(context?.sourceTransactions).toEqual(sourceTransactions);
+    expect(service.summarizeContext(context!)).toMatchObject({
+      availableTransactionCount: 1,
+      sourceTransactionCount: 2,
     });
   });
 

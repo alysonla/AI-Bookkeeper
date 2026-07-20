@@ -93,6 +93,7 @@ export async function processWebhookPayload(
             result: plannedResult.result,
             transactionCount: plannedResult.transactionCount,
             transactions: plannedResult.transactions,
+            sourceTransactions: plannedResult.sourceTransactions,
           });
 
           await dependencies.whatsappService.sendReply(message.from, reply);
@@ -134,6 +135,7 @@ export async function processWebhookPayload(
           result: calculation.result,
           transactionCount: calculation.transactionCount,
           transactions: calculation.transactions,
+          sourceTransactions: calculation.transactions,
         });
         const reply = await dependencies.openAIService.generateResponse({
           question: message.text,

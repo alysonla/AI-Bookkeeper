@@ -262,6 +262,72 @@ describe('PlanExecutorService', () => {
     ]);
   });
 
+  it('uses preserved source transactions when regrouping a named month after a narrowed result', () => {
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 2, 1),
+        merchant: 'Vet',
+        category: 'Milo',
+        amount: -3624.55,
+      },
+      {
+        date: new Date(2026, 2, 15),
+        merchant: 'Hardware Store',
+        category: 'Home Maintenance',
+        amount: -1440.01,
+      },
+      {
+        date: new Date(2026, 2, 18),
+        merchant: 'Doctor',
+        category: 'Health',
+        amount: -1337.82,
+      },
+      {
+        date: new Date(2026, 2, 20),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -1549.98,
+      },
+      {
+        date: new Date(2026, 3, 2),
+        merchant: 'Cafe',
+        category: 'Eating Out',
+        amount: -75,
+      },
+    ];
+    const context: ConversationContext = {
+      transactions: sourceTransactions.slice(0, 3),
+      sourceTransactions,
+      createdAt: new Date('2026-07-01'),
+      transactionCount: 3,
+      lastResult: [
+        { category: 'Milo', total: -3624.55, count: 1 },
+        { category: 'Home Maintenance', total: -1440.01, count: 1 },
+        { category: 'Health', total: -1337.82, count: 1 },
+      ],
+    };
+
+    const result = service.execute(
+      {
+        source: 'previous_transactions',
+        operation: 'group_by',
+        metric: 'expenses',
+        groupBy: 'category',
+      },
+      context,
+      'I mean sort all categories in march, not just those 4',
+    );
+
+    expect(result?.transactionCount).toBe(4);
+    expect(result?.sourceTransactions).toEqual(sourceTransactions);
+    expect(result?.result).toEqual([
+      { category: 'Milo', total: -3624.55, count: 1 },
+      { category: 'Groceries', total: -1549.98, count: 1 },
+      { category: 'Home Maintenance', total: -1440.01, count: 1 },
+      { category: 'Health', total: -1337.82, count: 1 },
+    ]);
+  });
+
   it('groups previous compared categories by month and category', () => {
     const context: ConversationContext = {
       transactions: [

@@ -494,33 +494,41 @@ describe('processWebhookPayload', () => {
     const generateResponse = vi
       .fn<OpenAIService['generateResponse']>()
       .mockResolvedValue('March categories are grouped correctly.');
+    const sourceTransactions = [
+      {
+        date: new Date(2026, 0, 1),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -120,
+      },
+      {
+        date: new Date(2026, 2, 1),
+        merchant: 'Vet',
+        category: 'Milo',
+        amount: -3624.55,
+      },
+      {
+        date: new Date(2026, 2, 15),
+        merchant: 'Hardware Store',
+        category: 'Home Maintenance',
+        amount: -1440.01,
+      },
+      {
+        date: new Date(2026, 2, 20),
+        merchant: 'Costco',
+        category: 'Groceries',
+        amount: -1549.98,
+      },
+      {
+        date: new Date(2026, 3, 1),
+        merchant: 'Cafe',
+        category: 'Eating Out',
+        amount: -75,
+      },
+    ];
     const context = {
-      transactions: [
-        {
-          date: new Date(2026, 0, 1),
-          merchant: 'Costco',
-          category: 'Groceries',
-          amount: -120,
-        },
-        {
-          date: new Date(2026, 2, 1),
-          merchant: 'Vet',
-          category: 'Milo',
-          amount: -3624.55,
-        },
-        {
-          date: new Date(2026, 2, 15),
-          merchant: 'Hardware Store',
-          category: 'Home Maintenance',
-          amount: -1440.01,
-        },
-        {
-          date: new Date(2026, 3, 1),
-          merchant: 'Cafe',
-          category: 'Eating Out',
-          amount: -75,
-        },
-      ],
+      transactions: sourceTransactions.slice(1, 3),
+      sourceTransactions,
       createdAt: new Date('2026-07-01'),
       lastResult: {
         averageMonthlySpending: 8191.62,
@@ -585,9 +593,10 @@ describe('processWebhookPayload', () => {
       question: 'what happened in March? can you list out each of the categories',
       result: [
         { category: 'Milo', total: -3624.55, count: 1 },
+        { category: 'Groceries', total: -1549.98, count: 1 },
         { category: 'Home Maintenance', total: -1440.01, count: 1 },
       ],
-      transactionCount: 2,
+      transactionCount: 3,
     });
     expect(sendReply).toHaveBeenCalledWith(
       '15551234567',

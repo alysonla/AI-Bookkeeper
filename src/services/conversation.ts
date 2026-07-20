@@ -3,6 +3,7 @@ import { formatCurrency } from '../utils/currency.js';
 
 export interface ConversationContext {
   transactions: Transaction[];
+  sourceTransactions?: Transaction[];
   createdAt: Date;
   lastQuestion?: string;
   lastResult?: unknown;
@@ -12,6 +13,7 @@ export interface ConversationContext {
 
 export interface ConversationContextInput {
   transactions: Transaction[];
+  sourceTransactions?: Transaction[];
   question?: string;
   result?: unknown;
   transactionCount?: number;
@@ -29,6 +31,7 @@ export class ConversationService {
   saveCalculationContext(userId: string, input: ConversationContextInput, now = new Date()): void {
     this.contexts.set(userId, {
       transactions: input.transactions,
+      sourceTransactions: input.sourceTransactions ?? input.transactions,
       createdAt: now,
       ...(input.question ? { lastQuestion: input.question } : {}),
       ...(input.result !== undefined ? { lastResult: input.result } : {}),
@@ -65,6 +68,7 @@ export class ConversationService {
       lastNumericResult: context.lastNumericResult ?? null,
       transactionCount: context.transactionCount ?? context.transactions.length,
       availableTransactionCount: context.transactions.length,
+      sourceTransactionCount: context.sourceTransactions?.length ?? context.transactions.length,
     };
   }
 

@@ -9,6 +9,7 @@ export interface PlanExecutionResult {
   result: unknown;
   transactionCount: number;
   transactions: Transaction[];
+  sourceTransactions?: Transaction[];
 }
 
 export class PlanExecutorService {
@@ -68,6 +69,7 @@ export class PlanExecutorService {
       },
       transactionCount: context.transactions.length,
       transactions: context.transactions,
+      sourceTransactions: context.sourceTransactions ?? context.transactions,
     };
   }
 
@@ -85,6 +87,7 @@ export class PlanExecutorService {
       },
       transactionCount: context.transactionCount ?? context.transactions.length,
       transactions: context.transactions,
+      sourceTransactions: context.sourceTransactions ?? context.transactions,
     };
   }
 
@@ -93,7 +96,11 @@ export class PlanExecutorService {
     context: ConversationContext,
     sourceText?: string,
   ): PlanExecutionResult | undefined {
-    const transactions = applyFilters(context.transactions, plan, context.createdAt, sourceText);
+    const sourceTransactions = context.sourceTransactions ?? context.transactions;
+    const baseTransactions = shouldUseSourceTransactions(context, sourceText)
+      ? sourceTransactions
+      : context.transactions;
+    const transactions = applyFilters(baseTransactions, plan, context.createdAt, sourceText);
 
     switch (plan.operation) {
       case 'sum': {
@@ -109,6 +116,7 @@ export class PlanExecutorService {
               : this.calculator.sum(metricTransactions),
           transactionCount: metricTransactions.length,
           transactions: metricTransactions,
+          sourceTransactions,
         };
       }
       case 'count':
@@ -116,6 +124,7 @@ export class PlanExecutorService {
           result: this.calculator.count(transactions),
           transactionCount: transactions.length,
           transactions,
+          sourceTransactions,
         };
       case 'median': {
         const metricTransactions = selectMetricTransactions(transactions, plan);
@@ -129,6 +138,7 @@ export class PlanExecutorService {
               : this.calculator.medianMonthlySpending(metricTransactions),
           transactionCount: metricTransactions.length,
           transactions: metricTransactions,
+          sourceTransactions,
         };
       }
       case 'group_by':
@@ -136,12 +146,14 @@ export class PlanExecutorService {
           result: this.groupTransactions(transactions, plan),
           transactionCount: transactions.length,
           transactions,
+          sourceTransactions,
         };
       case 'list':
         return {
           result: transactions.slice(0, plan.limit ?? 12),
           transactionCount: transactions.length,
           transactions,
+          sourceTransactions,
         };
       default:
         return undefined;
@@ -179,6 +191,7 @@ export class PlanExecutorService {
       },
       transactionCount: context.transactionCount ?? context.transactions.length,
       transactions: context.transactions,
+      sourceTransactions: context.sourceTransactions ?? context.transactions,
     };
   }
 
@@ -264,6 +277,21 @@ function selectMetricTransactions(
   }
 
   return transactions;
+}
+
+function shouldUseSourceTransactions(context: ConversationContext, sourceText?: string): boolean {
+  if (!sourceText || !context.sourceTransactions) {
+    return false;
+  }
+
+  const normalizedText = sourceText.toLowerCase();
+  const mentionsCategory = /\bcategor(?:y|ies)\b/.test(normalizedText);
+  const mentionsMonth =
+    /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/.test(
+      normalizedText,
+    );
+
+  return mentionsCategory && mentionsMonth;
 }
 
 function roundMoney(value: number): number {
