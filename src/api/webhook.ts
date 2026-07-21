@@ -130,6 +130,7 @@ export async function processWebhookPayload(
         }
 
         if (
+          !shouldReadSheetsForStandaloneQuestion(message.text) &&
           dependencies.conversationService?.isBreakdownRequest(message.text) &&
           dependencies.conversationService.getBreakdownContext(message.from)
         ) {
@@ -285,8 +286,9 @@ function shouldReadSheetsForStandaloneQuestion(messageText: string): boolean {
 
   return (
     hasDatePeriod(normalizedText) &&
-    isTotalQuestion(normalizedText) &&
-    /\b[a-z][a-z\s/&'-]*\s+transactions?\b/.test(normalizedText)
+    ((isTotalQuestion(normalizedText) &&
+      /\b[a-z][a-z\s/&'-]*\s+transactions?\b/.test(normalizedText)) ||
+      isTransactionListQuestion(normalizedText))
   );
 }
 
@@ -380,6 +382,26 @@ function isTotalQuestion(normalizedText: string): boolean {
 
 function isListQuestion(normalizedText: string): boolean {
   return /\b(?:list|show|details?|breakdown)\b/.test(normalizedText);
+}
+
+function isTransactionListQuestion(normalizedText: string): boolean {
+  if (
+    /\b(?:total|sum|how much|spend|spending|spent)\b/.test(normalizedText) &&
+    !/\b(?:list|show|breakdown|details?)\b/.test(normalizedText)
+  ) {
+    return false;
+  }
+
+  return (
+    /\b(?:list|show|breakdown|details?)\b.*\b(?:transactions?|purchases?|charges?)\b/.test(
+      normalizedText,
+    ) ||
+    /\b(?:transactions?|purchases?|charges?)\b.*\b(?:list|show|breakdown|details?)\b/.test(
+      normalizedText,
+    ) ||
+    /\bwhat\s+did\s+i\s+(?:buy|purchase)\b/.test(normalizedText) ||
+    /\b(?:transactions?|purchases?|charges?)\b/.test(normalizedText)
+  );
 }
 
 function isExclusionQuestion(normalizedText: string): boolean {

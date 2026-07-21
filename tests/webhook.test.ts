@@ -1399,6 +1399,128 @@ describe('processWebhookPayload', () => {
     );
   });
 
+  it('reads Sheets for date-scoped transaction-list questions instead of repeating prior breakdowns', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T12:00:00Z'));
+
+    try {
+      const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+      const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+        intent: 'unknown',
+        dateRange: 'all_time',
+      });
+      const extractCalculationPlan = vi.fn<OpenAIService['extractCalculationPlan']>();
+      const listTransactions = vi.fn<SheetsService['listTransactions']>().mockResolvedValue([
+        {
+          date: new Date(2026, 6, 12),
+          merchant: 'Honeydust Gallery',
+          category: 'Home Improvements',
+          amount: -1142.18,
+        },
+        {
+          date: new Date(2026, 6, 9),
+          merchant: 'Power Company',
+          category: 'Utilities',
+          amount: -95,
+        },
+        {
+          date: new Date(2026, 5, 9),
+          merchant: 'Water Company',
+          category: 'Utilities',
+          amount: -45,
+        },
+      ]);
+      const generateResponse = vi
+        .fn<OpenAIService['generateResponse']>()
+        .mockResolvedValue('Here are the July Utilities transactions.');
+      const previousContext = {
+        transactions: [
+          {
+            date: new Date(2026, 6, 12),
+            merchant: 'Honeydust Gallery',
+            category: 'Home Improvements',
+            amount: -1142.18,
+          },
+        ],
+        sourceTransactions: [
+          {
+            date: new Date(2026, 6, 12),
+            merchant: 'Honeydust Gallery',
+            category: 'Home Improvements',
+            amount: -1142.18,
+          },
+        ],
+        createdAt: new Date('2026-07-20T11:55:00Z'),
+        transactionCount: 1,
+      };
+      const conversationService = {
+        isBreakdownRequest: vi.fn().mockReturnValue(true),
+        getBreakdownContext: vi.fn().mockReturnValue(previousContext),
+        getContext: vi.fn().mockReturnValue(previousContext),
+        summarizeContext: vi.fn(),
+        saveCalculationContext: vi.fn(),
+        shouldIncludeCategory: vi.fn(),
+        formatBreakdown: vi.fn().mockReturnValue('Wrong repeated Home Improvements list.'),
+      };
+
+      const whatsappService = {
+        parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+          {
+            from: '15551234567',
+            id: 'wamid-12',
+            timestamp: '1770000011',
+            text: 'please list out the utilities transactions for this month',
+          },
+        ]),
+        sendReply,
+      } as unknown as WhatsAppService;
+
+      await processWebhookPayload(
+        {
+          whatsappService,
+          openAIService: {
+            extractIntent,
+            extractCalculationPlan,
+            generateResponse,
+            generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+          } as unknown as OpenAIService,
+          sheetsService: {
+            listTransactions,
+          } as unknown as SheetsService,
+          intentService: new IntentService(new CalculatorService()),
+          conversationService: conversationService as unknown as ConversationService,
+          planExecutorService: new PlanExecutorService(new CalculatorService()),
+          logger,
+          whatsappSmokeTest: false,
+          whatsappSmartReplies: false,
+        },
+        { object: 'whatsapp_business_account' },
+      );
+
+      expect(extractCalculationPlan).not.toHaveBeenCalled();
+      expect(conversationService.formatBreakdown).not.toHaveBeenCalled();
+      expect(listTransactions).toHaveBeenCalledOnce();
+      expect(generateResponse).toHaveBeenCalledWith({
+        question: 'please list out the utilities transactions for this month',
+        result: [
+          {
+            date: new Date(2026, 6, 9),
+            merchant: 'Power Company',
+            category: 'Utilities',
+            amount: -95,
+          },
+        ],
+        transactionCount: 1,
+      });
+      expect(sendReply).toHaveBeenCalledWith(
+        '15551234567',
+        'Here are the July Utilities transactions.',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not save empty unknown calculations over useful conversation context', async () => {
     const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
     const extractIntent = vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
