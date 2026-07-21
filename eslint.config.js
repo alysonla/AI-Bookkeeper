@@ -28,4 +28,14 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      globals: {
+        document: 'readonly',
+        fetch: 'readonly',
+        FormData: 'readonly',
+      },
+    },
+  },
 );
