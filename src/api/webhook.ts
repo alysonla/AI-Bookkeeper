@@ -56,6 +56,8 @@ export async function processWebhookPayload(
       const startedAt = Date.now();
 
       try {
+        await showTypingIndicatorSafely(dependencies, message.id);
+
         if (dependencies.whatsappSmokeTest) {
           dependencies.logger.info('Processing WhatsApp smoke-test message.', {
             messageId: message.id,
@@ -413,6 +415,24 @@ function normalizeMerchant(value: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function showTypingIndicatorSafely(
+  dependencies: WebhookRouterDependencies,
+  messageId: string,
+): Promise<void> {
+  if (typeof dependencies.whatsappService.showTypingIndicator !== 'function') {
+    return;
+  }
+
+  try {
+    await dependencies.whatsappService.showTypingIndicator(messageId);
+  } catch (error) {
+    dependencies.logger.warn('Failed to show WhatsApp typing indicator.', {
+      messageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function sendReplySafely(

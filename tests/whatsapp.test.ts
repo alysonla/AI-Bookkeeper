@@ -98,6 +98,61 @@ describe('WhatsAppService', () => {
     expect(fetchClient).toHaveBeenCalledTimes(2);
   });
 
+  it('sends the WhatsApp typing indicator and read receipt payload', async () => {
+    const fetchClient = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const typingService = new WhatsAppService({
+      verifyToken: 'local-secret',
+      accessToken: 'meta-token',
+      phoneNumberId: 'phone-id',
+      logger,
+      fetchClient,
+    });
+
+    await expect(typingService.showTypingIndicator('wamid-typing')).resolves.toBeUndefined();
+
+    expect(fetchClient).toHaveBeenCalledWith('https://graph.facebook.com/v20.0/phone-id/messages', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer meta-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: 'wamid-typing',
+        typing_indicator: {
+          type: 'text',
+        },
+      }),
+    });
+  });
+
+  it('throws when the WhatsApp typing indicator request fails', async () => {
+    const fetchClient = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'Authentication Error',
+          },
+        }),
+        { status: 401 },
+      ),
+    );
+    const typingService = new WhatsAppService({
+      verifyToken: 'local-secret',
+      accessToken: 'meta-token',
+      phoneNumberId: 'phone-id',
+      logger,
+      fetchClient,
+    });
+
+    await expect(typingService.showTypingIndicator('wamid-typing')).rejects.toThrow(
+      'Failed to show WhatsApp typing indicator. Status: 401',
+    );
+  });
+
   it('does not retry permanent Meta send failures', async () => {
     const fetchClient = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
