@@ -10,6 +10,19 @@ import type { WhatsAppWebhookPayload } from '../types/whatsapp.js';
 import { normalizeCategory } from '../utils/categories.js';
 import type { Logger } from '../utils/logger.js';
 
+type WhatsAppProcessingRoute =
+  | 'smoke_test'
+  | 'smart_reply'
+  | 'calculation_plan_follow_up'
+  | 'breakdown_follow_up'
+  | 'fresh_bookkeeping';
+
+interface MessageTrace {
+  traceId: string;
+  messageId: string;
+  startedAt: number;
+}
+
 export interface WebhookRouterDependencies {
   whatsappService: WhatsAppService;
   openAIService: OpenAIService;
@@ -53,28 +66,32 @@ export async function processWebhookPayload(
 
   await Promise.all(
     messages.map(async (message) => {
-      const startedAt = Date.now();
+      const trace = createMessageTrace(message.id);
+
+      dependencies.logger.info('Started WhatsApp message processing.', {
+        ...messageTraceMeta(trace),
+        textLength: message.text.length,
+        webhookTimestamp: message.timestamp,
+      });
 
       try {
-        await showTypingIndicatorSafely(dependencies, message.id);
+        await showTypingIndicatorSafely(dependencies, trace);
 
         if (dependencies.whatsappSmokeTest) {
-          dependencies.logger.info('Processing WhatsApp smoke-test message.', {
-            messageId: message.id,
-          });
+          logSelectedRoute(dependencies.logger, trace, 'smoke_test');
           await dependencies.whatsappService.sendReply(
             message.from,
             `Penny received: ${message.text}`,
           );
+          logCompletedProcessing(dependencies.logger, trace, 'smoke_test');
           return;
         }
 
         if (dependencies.whatsappSmartReplies) {
-          dependencies.logger.info('Processing WhatsApp smart-reply message.', {
-            messageId: message.id,
-          });
+          logSelectedRoute(dependencies.logger, trace, 'smart_reply');
           const reply = await dependencies.openAIService.generateSmartReply(message.text);
           await dependencies.whatsappService.sendReply(message.from, reply);
+          logCompletedProcessing(dependencies.logger, trace, 'smart_reply');
           return;
         }
 
@@ -82,9 +99,14 @@ export async function processWebhookPayload(
           dependencies,
           message.from,
           message.text,
+          trace,
         );
 
         if (plannedResult) {
+          logSelectedRoute(dependencies.logger, trace, 'calculation_plan_follow_up', {
+            transactionCount: plannedResult.transactionCount,
+            ...describeCalculationResult(plannedResult.result),
+          });
           const reply = await dependencies.openAIService.generateResponse({
             question: message.text,
             result: plannedResult.result,
@@ -100,9 +122,9 @@ export async function processWebhookPayload(
           });
 
           await dependencies.whatsappService.sendReply(message.from, reply);
-          dependencies.logger.info('Processed WhatsApp calculation-plan follow-up message.', {
-            messageId: message.id,
-            durationMs: Date.now() - startedAt,
+          logCompletedProcessing(dependencies.logger, trace, 'calculation_plan_follow_up', {
+            transactionCount: plannedResult.transactionCount,
+            ...describeCalculationResult(plannedResult.result),
           });
           return;
         }
@@ -111,28 +133,52 @@ export async function processWebhookPayload(
           dependencies.conversationService?.isBreakdownRequest(message.text) &&
           dependencies.conversationService.getBreakdownContext(message.from)
         ) {
-          dependencies.logger.info('Processing WhatsApp breakdown follow-up message.', {
-            messageId: message.id,
-          });
           const context = dependencies.conversationService.getBreakdownContext(message.from);
+          const includeCategory = dependencies.conversationService.shouldIncludeCategory(
+            message.text,
+          );
+          logSelectedRoute(dependencies.logger, trace, 'breakdown_follow_up', {
+            transactionCount: context?.transactions.length ?? 0,
+            includeCategory,
+          });
           const reply = dependencies.conversationService.formatBreakdown(
             context?.transactions ?? [],
             {
-              includeCategory: dependencies.conversationService.shouldIncludeCategory(message.text),
+              includeCategory,
             },
           );
           await dependencies.whatsappService.sendReply(message.from, reply);
+          logCompletedProcessing(dependencies.logger, trace, 'breakdown_follow_up', {
+            transactionCount: context?.transactions.length ?? 0,
+            includeCategory,
+          });
           return;
         }
 
+        logSelectedRoute(dependencies.logger, trace, 'fresh_bookkeeping');
         const intent = await dependencies.openAIService.extractIntent(message.text);
+        dependencies.logger.info('Extracted WhatsApp bookkeeping intent.', {
+          ...messageTraceMeta(trace),
+          ...describeIntent(intent),
+        });
         const transactions = await dependencies.sheetsService.listTransactions();
+        dependencies.logger.info('Loaded WhatsApp bookkeeping transactions.', {
+          ...messageTraceMeta(trace),
+          sourceTransactionCount: transactions.length,
+        });
         const calculation = dependencies.intentService.processIntent(
           intent,
           transactions,
           new Date(),
           message.text,
         );
+        dependencies.logger.info('Calculated WhatsApp bookkeeping result.', {
+          ...messageTraceMeta(trace),
+          transactionCount: calculation.transactionCount,
+          sourceTransactionCount:
+            calculation.sourceTransactions?.length ?? calculation.transactions.length,
+          ...describeCalculationResult(calculation.result),
+        });
         if (shouldSaveCalculationContext(intent.intent, calculation.transactionCount)) {
           dependencies.conversationService?.saveCalculationContext(message.from, {
             question: message.text,
@@ -149,13 +195,16 @@ export async function processWebhookPayload(
         });
 
         await dependencies.whatsappService.sendReply(message.from, reply);
-        dependencies.logger.info('Processed WhatsApp bookkeeping message.', {
-          messageId: message.id,
-          durationMs: Date.now() - startedAt,
+        logCompletedProcessing(dependencies.logger, trace, 'fresh_bookkeeping', {
+          transactionCount: calculation.transactionCount,
+          sourceTransactionCount:
+            calculation.sourceTransactions?.length ?? calculation.transactions.length,
+          ...describeCalculationResult(calculation.result),
         });
       } catch (error) {
         dependencies.logger.error('Failed to process incoming WhatsApp message.', {
-          messageId: message.id,
+          ...messageTraceMeta(trace),
+          durationMs: elapsedMs(trace),
           error: error instanceof Error ? error.message : String(error),
         });
 
@@ -163,7 +212,7 @@ export async function processWebhookPayload(
           dependencies,
           message.from,
           'Sorry, I had trouble answering that bookkeeping question. Please try again in a moment.',
-          message.id,
+          trace,
         );
       }
     }),
@@ -174,6 +223,7 @@ async function tryProcessCalculationPlan(
   dependencies: WebhookRouterDependencies,
   userId: string,
   messageText: string,
+  trace: MessageTrace,
 ) {
   if (!dependencies.planExecutorService || !dependencies.conversationService) {
     return undefined;
@@ -204,13 +254,17 @@ async function tryProcessCalculationPlan(
     }
 
     dependencies.logger.info('Executed calculation plan from conversation context.', {
+      ...messageTraceMeta(trace),
       operation: plan.operation,
       source: plan.source,
+      transactionCount: result.transactionCount,
+      ...describeCalculationResult(result.result),
     });
 
     return result;
   } catch (error) {
     dependencies.logger.warn('Could not execute calculation plan from conversation context.', {
+      ...messageTraceMeta(trace),
       error: error instanceof Error ? error.message : String(error),
     });
 
@@ -419,17 +473,18 @@ function escapeRegExp(value: string): string {
 
 async function showTypingIndicatorSafely(
   dependencies: WebhookRouterDependencies,
-  messageId: string,
+  trace: MessageTrace,
 ): Promise<void> {
   if (typeof dependencies.whatsappService.showTypingIndicator !== 'function') {
     return;
   }
 
   try {
-    await dependencies.whatsappService.showTypingIndicator(messageId);
+    await dependencies.whatsappService.showTypingIndicator(trace.messageId);
+    dependencies.logger.info('Requested WhatsApp typing indicator.', messageTraceMeta(trace));
   } catch (error) {
     dependencies.logger.warn('Failed to show WhatsApp typing indicator.', {
-      messageId,
+      ...messageTraceMeta(trace),
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -439,14 +494,110 @@ async function sendReplySafely(
   dependencies: WebhookRouterDependencies,
   to: string,
   reply: string,
-  messageId: string,
+  trace: MessageTrace,
 ): Promise<void> {
   try {
     await dependencies.whatsappService.sendReply(to, reply);
   } catch (error) {
     dependencies.logger.error('Failed to send WhatsApp fallback reply.', {
-      messageId,
+      ...messageTraceMeta(trace),
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function createMessageTrace(messageId: string): MessageTrace {
+  return {
+    traceId: `wa_${messageId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'message'}`,
+    messageId,
+    startedAt: Date.now(),
+  };
+}
+
+function messageTraceMeta(trace: MessageTrace): Pick<MessageTrace, 'traceId' | 'messageId'> {
+  return {
+    traceId: trace.traceId,
+    messageId: trace.messageId,
+  };
+}
+
+function logSelectedRoute(
+  logger: Logger,
+  trace: MessageTrace,
+  route: WhatsAppProcessingRoute,
+  meta: Record<string, unknown> = {},
+): void {
+  logger.info('Selected WhatsApp processing route.', {
+    ...messageTraceMeta(trace),
+    route,
+    ...meta,
+  });
+}
+
+function logCompletedProcessing(
+  logger: Logger,
+  trace: MessageTrace,
+  route: WhatsAppProcessingRoute,
+  meta: Record<string, unknown> = {},
+): void {
+  logger.info('Completed WhatsApp message processing.', {
+    ...messageTraceMeta(trace),
+    route,
+    durationMs: elapsedMs(trace),
+    ...meta,
+  });
+}
+
+function elapsedMs(trace: MessageTrace): number {
+  return Date.now() - trace.startedAt;
+}
+
+function describeIntent(intent: {
+  intent: string;
+  dateRange: string;
+  category?: string;
+  categories?: string[];
+  merchant?: string;
+  limit?: number;
+  startDate?: string;
+  endDate?: string;
+}): Record<string, unknown> {
+  return {
+    intent: intent.intent,
+    dateRange: intent.dateRange,
+    categoryCount: (intent.category ? 1 : 0) + (intent.categories?.length ?? 0),
+    hasMerchant: Boolean(intent.merchant),
+    hasLimit: typeof intent.limit === 'number',
+    hasCustomDateRange: Boolean(intent.startDate || intent.endDate),
+  };
+}
+
+function describeCalculationResult(result: unknown): Record<string, unknown> {
+  if (Array.isArray(result)) {
+    return {
+      resultType: 'array',
+      resultLength: result.length,
+    };
+  }
+
+  if (result === null) {
+    return {
+      resultType: 'null',
+    };
+  }
+
+  if (typeof result !== 'object') {
+    return {
+      resultType: typeof result,
+    };
+  }
+
+  const resultRecord = result as Record<string, unknown>;
+  const operation = resultRecord.operation;
+
+  return {
+    resultType: 'object',
+    resultKeys: Object.keys(resultRecord).sort(),
+    ...(typeof operation === 'string' ? { operation } : {}),
+  };
 }

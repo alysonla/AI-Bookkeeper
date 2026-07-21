@@ -153,10 +153,132 @@ describe('processWebhookPayload', () => {
 
     expect(showTypingIndicator).toHaveBeenCalledWith('wamid-typing-fails');
     expect(logger.warn).toHaveBeenCalledWith('Failed to show WhatsApp typing indicator.', {
+      traceId: 'wa_wamid-typing-fails',
       messageId: 'wamid-typing-fails',
       error: 'typing failed',
     });
     expect(sendReply).toHaveBeenCalledWith('15551234567', 'Still here.');
+  });
+
+  it('logs a privacy-safe lifecycle trace for fresh bookkeeping messages', async () => {
+    const localLogger: Logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const sendReply = vi.fn<WhatsAppService['sendReply']>().mockResolvedValue(undefined);
+    const showTypingIndicator = vi
+      .fn<WhatsAppService['showTypingIndicator']>()
+      .mockResolvedValue(undefined);
+    const question = 'what did I spend on groceries?';
+
+    const whatsappService = {
+      parseIncomingMessages: vi.fn<WhatsAppService['parseIncomingMessages']>().mockReturnValue([
+        {
+          from: '15551234567',
+          id: 'wamid-observe-1',
+          timestamp: '1770000002',
+          text: question,
+        },
+      ]),
+      sendReply,
+      showTypingIndicator,
+    } as unknown as WhatsAppService;
+
+    await processWebhookPayload(
+      {
+        whatsappService,
+        openAIService: {
+          extractIntent: vi.fn<OpenAIService['extractIntent']>().mockResolvedValue({
+            intent: 'sum_category',
+            category: 'Groceries',
+            dateRange: 'all_time',
+          }),
+          generateResponse: vi
+            .fn<OpenAIService['generateResponse']>()
+            .mockResolvedValue('You spent $42 on groceries.'),
+          generateSmartReply: vi.fn<OpenAIService['generateSmartReply']>(),
+        } as unknown as OpenAIService,
+        sheetsService: {
+          listTransactions: vi.fn<SheetsService['listTransactions']>().mockResolvedValue([
+            {
+              date: new Date('2026-07-01'),
+              merchant: 'Costco',
+              category: 'Groceries',
+              amount: -42,
+            },
+            {
+              date: new Date('2026-07-02'),
+              merchant: 'Cafe',
+              category: 'Eating Out',
+              amount: -15,
+            },
+          ]),
+        } as unknown as SheetsService,
+        intentService: new IntentService(new CalculatorService()),
+        logger: localLogger,
+        whatsappSmokeTest: false,
+        whatsappSmartReplies: false,
+      },
+      { object: 'whatsapp_business_account' },
+    );
+
+    expect(localLogger.info).toHaveBeenCalledWith('Started WhatsApp message processing.', {
+      traceId: 'wa_wamid-observe-1',
+      messageId: 'wamid-observe-1',
+      textLength: question.length,
+      webhookTimestamp: '1770000002',
+    });
+    expect(localLogger.info).toHaveBeenCalledWith('Requested WhatsApp typing indicator.', {
+      traceId: 'wa_wamid-observe-1',
+      messageId: 'wamid-observe-1',
+    });
+    expect(localLogger.info).toHaveBeenCalledWith('Selected WhatsApp processing route.', {
+      traceId: 'wa_wamid-observe-1',
+      messageId: 'wamid-observe-1',
+      route: 'fresh_bookkeeping',
+    });
+    expect(localLogger.info).toHaveBeenCalledWith('Extracted WhatsApp bookkeeping intent.', {
+      traceId: 'wa_wamid-observe-1',
+      messageId: 'wamid-observe-1',
+      intent: 'sum_category',
+      dateRange: 'all_time',
+      categoryCount: 1,
+      hasMerchant: false,
+      hasLimit: false,
+      hasCustomDateRange: false,
+    });
+    expect(localLogger.info).toHaveBeenCalledWith('Loaded WhatsApp bookkeeping transactions.', {
+      traceId: 'wa_wamid-observe-1',
+      messageId: 'wamid-observe-1',
+      sourceTransactionCount: 2,
+    });
+    expect(localLogger.info).toHaveBeenCalledWith(
+      'Calculated WhatsApp bookkeeping result.',
+      expect.objectContaining({
+        traceId: 'wa_wamid-observe-1',
+        messageId: 'wamid-observe-1',
+        transactionCount: 1,
+        sourceTransactionCount: 2,
+        resultType: 'object',
+      }),
+    );
+    expect(localLogger.info).toHaveBeenCalledWith(
+      'Completed WhatsApp message processing.',
+      expect.objectContaining({
+        traceId: 'wa_wamid-observe-1',
+        messageId: 'wamid-observe-1',
+        route: 'fresh_bookkeeping',
+        durationMs: expect.any(Number),
+        transactionCount: 1,
+      }),
+    );
+
+    const infoLogPayload = JSON.stringify(vi.mocked(localLogger.info).mock.calls);
+    expect(infoLogPayload).not.toContain(question);
+    expect(infoLogPayload).not.toContain('15551234567');
+    expect(sendReply).toHaveBeenCalledWith('15551234567', 'You spent $42 on groceries.');
   });
 
   it('uses the last calculation context for yes-style breakdown follow-ups', async () => {
