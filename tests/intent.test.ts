@@ -437,6 +437,131 @@ describe('IntentService', () => {
     expect(result.sourceTransactions).toHaveLength(3);
   });
 
+  it('treats what-did-I-buy wording as a category transaction list for this month', () => {
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'all_time',
+      },
+      [
+        {
+          date: new Date(2026, 6, 3),
+          merchant: 'Mattress Store',
+          category: 'Home Improvements',
+          amount: -250,
+          account: 'Credit Card',
+        },
+        {
+          date: new Date(2026, 5, 10),
+          merchant: 'Hardware Store',
+          category: 'Home Improvements',
+          amount: -80,
+        },
+        {
+          date: new Date(2026, 6, 4),
+          merchant: 'Power Company',
+          category: 'Utilities',
+          amount: -120,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'what did I buy in the home improvements category this month?',
+    );
+
+    expect(result.result).toEqual([
+      {
+        date: new Date(2026, 6, 3),
+        merchant: 'Mattress Store',
+        category: 'Home Improvements',
+        amount: -250,
+        account: 'Credit Card',
+      },
+    ]);
+    expect(result.transactionCount).toBe(1);
+  });
+
+  it('lists utility transactions for this month even when intent extraction is unknown', () => {
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'all_time',
+      },
+      [
+        {
+          date: new Date(2026, 6, 5),
+          merchant: 'Power Company',
+          category: 'Utilities',
+          amount: -95,
+        },
+        {
+          date: new Date(2026, 5, 5),
+          merchant: 'Water Company',
+          category: 'Utilities',
+          amount: -45,
+        },
+        {
+          date: new Date(2026, 6, 6),
+          merchant: 'Costco',
+          category: 'Groceries',
+          amount: -140,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'please list out the utilities transactions for this month',
+    );
+
+    expect(result.result).toEqual([
+      {
+        date: new Date(2026, 6, 5),
+        merchant: 'Power Company',
+        category: 'Utilities',
+        amount: -95,
+      },
+    ]);
+    expect(result.transactionCount).toBe(1);
+  });
+
+  it('keeps typoed category transaction wording as a list instead of a total', () => {
+    const result = service.processIntent(
+      {
+        intent: 'unknown',
+        dateRange: 'this_month',
+      },
+      [
+        {
+          date: new Date(2026, 6, 5),
+          merchant: 'Power Company',
+          category: 'Utilities',
+          amount: -95,
+        },
+        {
+          date: new Date(2026, 6, 6),
+          merchant: 'Water Company',
+          category: 'Utilities',
+          amount: -45,
+        },
+      ],
+      new Date(2026, 6, 20),
+      'the utlities transactions',
+    );
+
+    expect(result.result).toEqual([
+      {
+        date: new Date(2026, 6, 6),
+        merchant: 'Water Company',
+        category: 'Utilities',
+        amount: -45,
+      },
+      {
+        date: new Date(2026, 6, 5),
+        merchant: 'Power Company',
+        category: 'Utilities',
+        amount: -95,
+      },
+    ]);
+    expect(result.transactionCount).toBe(2);
+  });
+
   it('does not collapse comparison questions into a combined category sum', () => {
     const result = service.processIntent(
       {

@@ -35,6 +35,9 @@ export class IntentService {
     const scopedTransactions = transactions.filter((transaction) =>
       isWithinDateRange(transaction.date, dateRange),
     );
+    const allNonTransferTransactions = transactions.filter(
+      (transaction) => !isTransfer(transaction),
+    );
     const nonTransferTransactions = scopedTransactions.filter(
       (transaction) => !isTransfer(transaction),
     );
@@ -42,7 +45,10 @@ export class IntentService {
     const explicitCategories = sourceText ? extractExplicitCategories(sourceText) : [];
 
     if (sourceText && isTransactionListQuestion(sourceText)) {
-      const category = findMentionedCategory(sourceText, nonTransferTransactions);
+      const category =
+        findMentionedCategory(sourceText, nonTransferTransactions) ??
+        findMentionedCategory(sourceText, allNonTransferTransactions) ??
+        findExplicitCategory(sourceText);
 
       if (category) {
         return this.transactionList(nonTransferTransactions, category);
@@ -58,7 +64,10 @@ export class IntentService {
     }
 
     if (sourceText && isCategorySumQuestion(sourceText)) {
-      const category = findMentionedCategory(sourceText, nonTransferTransactions);
+      const category =
+        findMentionedCategory(sourceText, nonTransferTransactions) ??
+        findMentionedCategory(sourceText, allNonTransferTransactions) ??
+        findExplicitCategory(sourceText);
 
       if (category) {
         return this.categorySum(nonTransferTransactions, [category]);
@@ -481,7 +490,38 @@ function extractExplicitCategories(sourceText: string): string[] {
     categories.push('Eating Out');
   }
 
+  const category = findExplicitCategory(sourceText);
+
+  if (category) {
+    categories.push(category);
+  }
+
   return [...new Set(categories)];
+}
+
+function findExplicitCategory(sourceText: string): string | undefined {
+  const normalizedText = normalizeCategory(sourceText);
+  const aliases = [
+    { category: 'Home Improvements', aliases: ['home improvement', 'home improvements'] },
+    { category: 'Home Maintenance', aliases: ['home maintenance'] },
+    { category: 'Utilities', aliases: ['utilities', 'utlities', 'utility'] },
+    { category: 'Health', aliases: ['health'] },
+    { category: 'Milo', aliases: ['milo'] },
+    { category: 'Groceries', aliases: ['grocery', 'groceries'] },
+    { category: 'Eating Out', aliases: ['eating out', 'dining', 'restaurant', 'restaurants'] },
+  ];
+
+  for (const candidate of aliases) {
+    if (
+      candidate.aliases.some((alias) =>
+        new RegExp(`(?:^|\\s)${escapeRegExp(alias)}(?:\\s|$)`).test(normalizedText),
+      )
+    ) {
+      return candidate.category;
+    }
+  }
+
+  return undefined;
 }
 
 function isCategorySumQuestion(sourceText: string): boolean {
@@ -523,8 +563,24 @@ function isLastMonthToThisMonthComparison(sourceText: string): boolean {
 }
 
 function isTransactionListQuestion(sourceText: string): boolean {
-  return /\b(?:list|show)\b.*\btransactions?\b|\btransactions?\b.*\b(?:list|show)\b/.test(
-    sourceText.toLowerCase(),
+  const normalizedText = sourceText.toLowerCase();
+
+  if (
+    /\b(?:total|sum|how much|spend|spending|spent)\b/.test(normalizedText) &&
+    !/\b(?:list|show|breakdown|details?)\b/.test(normalizedText)
+  ) {
+    return false;
+  }
+
+  return (
+    /\b(?:list|show|breakdown|details?)\b.*\b(?:transactions?|purchases?|charges?)\b/.test(
+      normalizedText,
+    ) ||
+    /\b(?:transactions?|purchases?|charges?)\b.*\b(?:list|show|breakdown|details?)\b/.test(
+      normalizedText,
+    ) ||
+    /\bwhat\s+did\s+i\s+(?:buy|purchase)\b/.test(normalizedText) ||
+    /\b(?:transactions?|purchases?|charges?)\b/.test(normalizedText)
   );
 }
 
