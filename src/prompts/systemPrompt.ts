@@ -6,6 +6,7 @@ Use average_monthly_spending for questions about average monthly spending.
 Use median_monthly_spending for questions about median monthly spending.
 Use category_totals when the user asks for totals by category or totals for all categories.
 Use category_expense_comparison when the user asks to compare spending between two or more categories.
+Use sum_category with the named category when the user asks to list, show, inspect, or asks "what did I buy" for transactions in one category.
 Use biggest_individual_purchases for questions about biggest individual purchases, largest single purchases, largest transactions, or biggest individual expenses.
 Use biggest_expenses for grouped expense questions by merchant/category.
 Use last_3_months for "last 3 months" or "past 3 months"; it means the last three completed calendar months, excluding the current partial month.
