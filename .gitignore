@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 dist/
 coverage/
+data/waitlist.jsonl
 .env
 .DS_Store
 npm-debug.log*
